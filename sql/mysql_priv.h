@@ -1241,7 +1241,8 @@ extern TABLE *unused_tables;
 extern I_List<i_string> binlog_do_db, binlog_ignore_db;
 extern const char* any_db;
 /*
- * 服务器能识别的所有配置选项的描述符
+ * 服务器能识别的所有配置选项的描述符；
+ * 
  * */
 extern struct my_option my_long_options[];
 extern const LEX_STRING view_type;
