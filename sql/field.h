@@ -18,6 +18,7 @@
 /*
   Because of the function new_field() all field classes that have static
   variables must declare the size_of() member function.
+  为每个特定域类型定义的大量子类的基本抽象类。这个类自然而然的在分析器和优化器中扮演者重要角色，因为在处理的大多数操作都涉及表域
 */
 
 #ifdef USE_PRAGMA_INTERFACE
@@ -51,19 +52,40 @@ public:
   static void *operator new(size_t size) {return (void*) sql_alloc((uint) size); }
   static void operator delete(void *ptr_arg, size_t size) { TRASH(ptr_arg, size); }
 
+    /*
+     * 指向记录的内存副本中的域数据
+     * */
   char		*ptr;			// Position to field in record
-  uchar		*null_ptr;		// Byte where null_bit is
+    /*
+     * null_ptr: 指向记录的内存副本中的字节，该字节包含一个位，指出本域的数值是否为 NULL
+     * */
+    uchar		*null_ptr;		// Byte where null_bit is
   /*
     Note that you can use table->in_use as replacement for current_thd member 
     only inside of val_*() and store() members (e.g. you can't use it in cons)
   */
   struct st_table *table;		// Pointer for table
   struct st_table *orig_table;		// Pointer to original table
-  const char	**table_name, *field_name;
-  LEX_STRING	comment;
-  query_id_t	query_id;		// For quick test of used fields
+    /*
+     * table_name：包含本域的表名称
+     * field_name：本域的名称
+     * */
+    const char	**table_name, *field_name;
+    /*
+     * comment: 本域的注释内容。可在定义本域时，可在create table 语句中输入注释；
+     * */
+    LEX_STRING	comment;
+    /*
+     * query_id：描述符的查询ID
+     * */
+    query_id_t	query_id;		// For quick test of used fields
   /* Field is part of the following keys */
-  key_map	key_start,part_of_key,part_of_sortkey;
+    /*
+     * key_start: 本位掩码的第 n 位置位
+     * part_of_key：本位掩码的第 N 位置位，则本域是 表中的第 n 个键的组成部分
+     * part_of_sortkey：如果本位掩码的第 n 位位置位，则则本域是表中的第 n 个键中的组成部分，并且可按照键数值的升序或者降序对键进行遍历
+     * */
+    key_map	key_start,part_of_key,part_of_sortkey;
   /* 
     We use three additional unireg types for TIMESTAMP to overcome limitation 
     of current binary format of .frm file. We'd like to be able to support 
@@ -85,10 +107,19 @@ public:
   enum imagetype { itRAW, itMBR};
 
   utype		unireg_check;
-  uint32	field_length;		// Length of field
+    /*
+     * 可以在本域中存储的数据的最大长度
+     * */
+    uint32	field_length;		// Length of field
   uint          field_index;            // field number in fields array
-  uint16	flags;
-  uchar		null_bit;		// Bit used to test null bit
+    /*
+     * 域特殊属性的位掩码，在create table的域定义中设置，例如 NOT NULL、AUTO_INCREMENT、or ZERO©FILL
+     * */
+    uint16	flags;
+    /*
+     * null_bit: 只有一位位置位的位掩码，对应于记录前缀中指出本域的数值为 NULL 的位；
+     * */
+    uchar		null_bit;		// Bit used to test null bit
 
   Field(char *ptr_arg,uint32 length_arg,uchar *null_ptr_arg,uchar null_bit_arg,
 	utype unireg_check_arg, const char *field_name_arg,
@@ -100,10 +131,18 @@ public:
   virtual int  store(longlong nr, bool unsigned_val)=0;
   virtual int  store_decimal(const my_decimal *d)=0;
   virtual int store_time(TIME *ltime, timestamp_type t_type);
-  virtual double val_real(void)=0;
+
+    /*
+     * val_real：返回存储在与本域描述符有关的记录的内存副本中的数值，将其转换为双精度浮点数
+     * */
+    virtual double val_real(void)=0;
   virtual longlong val_int(void)=0;
   virtual my_decimal *val_decimal(my_decimal *);
-  inline String *val_str(String *str) { return val_str(str, str); }
+
+    /*
+     * val_str: 返回在与本域描述符有关的记录的内存副本中的存储的值，将其转换为字符串
+     * */
+    inline String *val_str(String *str) { return val_str(str, str); }
   /*
      val_str(buf1, buf2) gets two buffers and should use them as follows:
      if it needs a temp buffer to convert result to string - use buf1
@@ -119,7 +158,11 @@ public:
   virtual String *val_str(String*,String *)=0;
   String *val_int_as_str(String *val_buffer, my_bool unsigned_flag);
   virtual Item_result result_type () const=0;
-  virtual Item_result cmp_type () const { return result_type(); }
+
+    /*
+     * cmp_type: 返回域中存储的数据类型，通过检查该类型可以确定如何与其他值进行比较
+     * */
+    virtual Item_result cmp_type () const { return result_type(); }
   virtual Item_result cast_to_int_type () const { return result_type(); }
   static bool type_can_have_key_part(enum_field_types);
   static enum_field_types field_type_merge(enum_field_types, enum_field_types);
@@ -169,8 +212,10 @@ public:
   */
   virtual void sql_type(String &str) const =0;
   virtual uint size_of() const =0;		// For new field
-  inline bool is_null(uint row_offset=0)
-  { return null_ptr ? (null_ptr[row_offset] & null_bit ? 1 : 0) : table->null_row; }
+    /*
+     * 如果与本域描述符有关的记录的内存副本中的域数值在SQL意义上为NULL，则返回为真
+     * */
+    inline bool is_null(uint row_offset=0) { return null_ptr ? (null_ptr[row_offset] & null_bit ? 1 : 0) : table->null_row; }
   inline bool is_real_null(uint row_offset=0)
     { return null_ptr ? (null_ptr[row_offset] & null_bit ? 1 : 0) : 0; }
   inline bool is_null_in_record(const uchar *record)
@@ -180,11 +225,19 @@ public:
     return test(record[(uint) (null_ptr - (uchar*) table->record[0])] &
 		null_bit);
   }
-  inline void set_null(int row_offset=0)
-    { if (null_ptr) null_ptr[row_offset]|= null_bit; }
+
+    /*
+     * 将本域描述符有关的记录的内存副本中的域数值标记为 NULL
+     *
+     * */
+    inline void set_null(int row_offset=0) { if (null_ptr) null_ptr[row_offset]|= null_bit; }
   inline void set_notnull(int row_offset=0)
     { if (null_ptr) null_ptr[row_offset]&= (uchar) ~null_bit; }
-  inline bool maybe_null(void) { return null_ptr != 0 || table->maybe_null; }
+
+    /*
+     * 如果域可能包含SQL意义上的NULL数值则返回为真
+     * */
+    inline bool maybe_null(void) { return null_ptr != 0 || table->maybe_null; }
   inline bool real_maybe_null(void) { return null_ptr != 0; }
   virtual void make_field(Send_field *);
   virtual void sort_string(char *buff,uint length)=0;
@@ -364,7 +417,11 @@ public:
   uint size_of() const { return sizeof(*this); }
   CHARSET_INFO *charset(void) const { return field_charset; }
   void set_charset(CHARSET_INFO *charset) { field_charset=charset; }
-  bool binary() const { return field_charset == &my_charset_bin; }
+
+    /*
+     * 报告以二进制形式还是以字节形式对域数值进行比较
+     * */
+    bool binary() const { return field_charset == &my_charset_bin; }
   uint32 max_length() { return field_length; }
   friend class create_field;
   my_decimal *val_decimal(my_decimal *);
@@ -417,17 +474,30 @@ public:
                 unireg_check_arg, field_name_arg, table_arg,
                 dec_arg, zero_arg, unsigned_arg)
     {}
-  enum_field_types type() const { return FIELD_TYPE_DECIMAL;}
+
+    /*
+     * 返回表定义环境中的域类型
+     * */
+    enum_field_types type() const { return FIELD_TYPE_DECIMAL;}
   enum ha_base_keytype key_type() const
   { return zerofill ? HA_KEYTYPE_BINARY : HA_KEYTYPE_NUM; }
-  void reset(void);
+
+    /*
+     * reset：清除与本域描述符有关的记录的内存副本中的数据设置
+     * */
+    void reset(void);
   int  store(const char *to,uint length,CHARSET_INFO *charset);
   int  store(double nr);
   int  store(longlong nr, bool unsigned_val);
   double val_real(void);
   longlong val_int(void);
   String *val_str(String*,String *);
-  int cmp(const char *,const char*);
+
+    /*
+     * 返回 str 本域描述符有关的记录的内存副本中的数值的比较结果。如果域数值小于 str 则 返回-1，如果相等则返回 0，如果域数值大于 str
+     * 则返回 1。假定 str 长度为 field_length 字节
+     * */
+    int cmp(const char *, const char*);
   void sort_string(char *buff,uint length);
   void overflow(bool negative);
   bool zero_pack() const { return 0; }
@@ -1048,7 +1118,11 @@ public:
   bool zero_pack() const { return 0; }
   void reset(void) { bzero(ptr,field_length+length_bytes); }
   uint32 pack_length() const { return (uint32) field_length+length_bytes; }
-  uint32 key_length() const { return (uint32) field_length; }
+
+    /*
+     * key_length: 返回域的长度，目的是实现键的内存操作
+     * */
+    uint32 key_length() const { return (uint32) field_length; }
   uint32 sort_length() const
   {
     return (uint32) field_length + (field_charset == &my_charset_bin ?
@@ -1076,7 +1150,12 @@ public:
   int pack_cmp(const char *b, uint key_length,my_bool insert_or_update);
   int cmp_binary(const char *a,const char *b, uint32 max_length=~0L);
   int key_cmp(const byte *,const byte*);
-  int key_cmp(const byte *str, uint length);
+
+    /*
+     * 返回 str 与 键环境中的与本域描述符有关记录的内存副本中的数据的比较结果。如果与数值小于 str 返回 -1，等于返回 0，大于str 返回 1；
+     * 假定 str 的长度为 field_length
+     * */
+    int key_cmp(const byte *str, uint length);
   uint packed_col_length(const char *to, uint length);
   uint max_packed_col_length(uint max_length);
   uint size_of() const { return sizeof(*this); }
@@ -1299,7 +1378,11 @@ public:
   uint32 key_length() const { return (uint32) field_length + (bit_len > 0); }
   uint32 max_length() { return (uint32) field_length * 8 + bit_len; }
   uint size_of() const { return sizeof(*this); }
-  Item_result result_type () const { return INT_RESULT; }
+
+    /*
+     * result_type: 返回域中存储的数据类型。被范围优化器用于决定范围优化是否恰当；
+     * */
+    Item_result result_type () const { return INT_RESULT; }
   void reset(void) { bzero(ptr, field_length); }
   int store(const char *to, uint length, CHARSET_INFO *charset);
   int store(double nr);
@@ -1348,9 +1431,16 @@ public:
   uint32 max_length() { return (uint32) create_length; }
   uint size_of() const { return sizeof(*this); }
   int store(const char *to, uint length, CHARSET_INFO *charset);
-  int store(double nr) { return Field_bit::store(nr); }
-  int store(longlong nr, bool unsigned_val)
-  { return Field_bit::store(nr, unsigned_val); }
+
+    /*
+     * 在与本域描述符有关的记录的内存副本中存储双精度 nr
+     * */
+    int store(double nr) { return Field_bit::store(nr); }
+
+    /*
+     * 在与本域描述符有关的记录的内存副本中的数值，将其转换为双精度浮点数
+     * */
+    int store(longlong nr, bool unsigned_val) { return Field_bit::store(nr, unsigned_val); }
   void sql_type(String &str) const;
 };
 

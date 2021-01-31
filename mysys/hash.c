@@ -45,30 +45,35 @@ static uint calc_hash(HASH *hash,const byte *key,uint length)
   return nr1;
 }
 
+/*
+ * 初始化散列描述符。成功返回0，失败时返回非0的数值。
+ * 注意：hash_init() 实际上是 _hash_init()的别名。获得给定记录的散列键的方法可通过 key_offset和key_length指定，或者由函数 get_key
+ * 指定
+ *
+ * */
 my_bool
-_hash_init(HASH *hash,CHARSET_INFO *charset,
-	   uint size,uint key_offset,uint key_length,
-	   hash_get_key get_key,
-	   void (*free_element)(void*),uint flags CALLER_INFO_PROTO)
+_hash_init(HASH *hash, CHARSET_INFO *charset,
+           uint size, uint key_offset, uint key_length,
+           hash_get_key get_key,
+           void (*free_element)(void*), uint flags CALLER_INFO_PROTO)
 {
-  DBUG_ENTER("hash_init");
-  DBUG_PRINT("enter",("hash: 0x%lx  size: %d",hash,size));
+    DBUG_ENTER("hash_init");
+    DBUG_PRINT("enter", ("hash: 0x%lx  size: %d",hash,size));
 
-  hash->records=0;
-  if (my_init_dynamic_array_ci(&hash->array,sizeof(HASH_LINK),size,0))
-  {
-    hash->free=0;				/* Allow call to hash_free */
-    DBUG_RETURN(1);
-  }
-  hash->key_offset=key_offset;
-  hash->key_length=key_length;
-  hash->blength=1;
-  hash->current_record= NO_RECORD;		/* For the future */
-  hash->get_key=get_key;
-  hash->free=free_element;
-  hash->flags=flags;
-  hash->charset=charset;
-  DBUG_RETURN(0);
+    hash->records=0;
+    if (my_init_dynamic_array_ci(&hash->array, sizeof(HASH_LINK), size, 0)) {
+        hash->free=0;				/* Allow call to hash_free */
+        DBUG_RETURN(1);
+    }
+    hash->key_offset=key_offset;
+    hash->key_length=key_length;
+    hash->blength=1;
+    hash->current_record= NO_RECORD;		/* For the future */
+    hash->get_key=get_key;
+    hash->free=free_element;
+    hash->flags=flags;
+    hash->charset=charset;
+    DBUG_RETURN(0);
 }
 
 
@@ -106,15 +111,19 @@ static inline void hash_free_elements(HASH *hash)
   NOTES: Hash can't be reused without calling hash_init again.
 */
 
+/*
+ * 释放与描述符有关的散列值，执行必要的清零
+ *
+ * */
 void hash_free(HASH *hash)
 {
-  DBUG_ENTER("hash_free");
-  DBUG_PRINT("enter",("hash: 0x%lxd",hash));
+    DBUG_ENTER("hash_free");
+    DBUG_PRINT("enter", ("hash: 0x%lxd",hash));
 
-  hash_free_elements(hash);
-  hash->free= 0;
-  delete_dynamic(&hash->array);
-  DBUG_VOID_RETURN;
+    hash_free_elements(hash);
+    hash->free= 0;
+    delete_dynamic(&hash->array);
+    DBUG_VOID_RETURN;
 }
 
 
@@ -189,62 +198,64 @@ unsigned int rec_hashnr(HASH *hash,const byte *record)
 	/* Search after a record based on a key */
 	/* Sets info->current_ptr to found record */
 
-gptr hash_search(HASH *hash,const byte *key,uint length)
-{
-  HASH_LINK *pos;
-  uint flag,idx;
-  DBUG_ENTER("hash_search");
 
-  flag=1;
-  if (hash->records)
-  {
-    idx=hash_mask(calc_hash(hash,key,length ? length : hash->key_length),
-		    hash->blength,hash->records);
-    do
-    {
-      pos= dynamic_element(&hash->array,idx,HASH_LINK*);
-      if (!hashcmp(hash,pos,key,length))
-      {
-	DBUG_PRINT("exit",("found key at %d",idx));
-	hash->current_record= idx;
-	DBUG_RETURN (pos->data);
-      }
-      if (flag)
-      {
-	flag=0;					/* Reset flag */
-	if (hash_rec_mask(hash,pos,hash->blength,hash->records) != idx)
-	  break;				/* Wrong link */
-      }
+/*
+ * 找到散列列表中与指定键值有关的记录。在首次调用hash_search() 之后，成功时，返回指向第一个记录的指针，失败返回 0；
+ * */
+
+gptr hash_search(HASH *hash, const byte *key, uint length)
+{
+    HASH_LINK *pos;
+    uint flag,idx;
+    DBUG_ENTER("hash_search");
+
+    flag=1;
+    if (hash->records) {
+        idx=hash_mask(calc_hash(hash, key, length ? length : hash->key_length),
+                      hash->blength, hash->records);
+        do {
+            pos= dynamic_element(&hash->array, idx, HASH_LINK*);
+            if (!hashcmp(hash, pos, key, length)) {
+                DBUG_PRINT("exit", ("found key at %d",idx));
+                hash->current_record= idx;
+                DBUG_RETURN (pos->data);
+            }
+            if (flag) {
+                flag=0;					/* Reset flag */
+                if (hash_rec_mask(hash, pos, hash->blength, hash->records) != idx)
+                    break;				/* Wrong link */
+            }
+        } while ((idx=pos->next) != NO_RECORD);
     }
-    while ((idx=pos->next) != NO_RECORD);
-  }
-  hash->current_record= NO_RECORD;
-  DBUG_RETURN(0);
+    hash->current_record= NO_RECORD;
+    DBUG_RETURN(0);
 }
 
 	/* Get next record with identical key */
 	/* Can only be called if previous calls was hash_search */
 
-gptr hash_next(HASH *hash,const byte *key,uint length)
-{
-  HASH_LINK *pos;
-  uint idx;
+/*
+ * 找到散列值种下一个与指定简直有关的的记录。在首次调用 hash_search() 之后，为检索与键有关的后续记录，会反复调用，成功返回指向记录的指针，
+ * 失败返回 0
+ * */
 
-  if (hash->current_record != NO_RECORD)
-  {
-    HASH_LINK *data=dynamic_element(&hash->array,0,HASH_LINK*);
-    for (idx=data[hash->current_record].next; idx != NO_RECORD ; idx=pos->next)
-    {
-      pos=data+idx;
-      if (!hashcmp(hash,pos,key,length))
-      {
-	hash->current_record= idx;
-	return pos->data;
-      }
+gptr hash_next(HASH *hash, const byte *key, uint length)
+{
+    HASH_LINK *pos;
+    uint idx;
+
+    if (hash->current_record != NO_RECORD) {
+        HASH_LINK *data=dynamic_element(&hash->array, 0, HASH_LINK*);
+        for (idx=data[hash->current_record].next; idx != NO_RECORD ; idx=pos->next) {
+            pos= data + idx;
+            if (!hashcmp(hash, pos, key, length)) {
+                hash->current_record= idx;
+                return pos->data;
+            }
+        }
+        hash->current_record=NO_RECORD;
     }
-    hash->current_record=NO_RECORD;
-  }
-  return 0;
+    return 0;
 }
 
 
@@ -293,131 +304,110 @@ static int hashcmp(HASH *hash,HASH_LINK *pos,const byte *key,uint length)
 
 	/* Write a hash-key to the hash-index */
 
-my_bool my_hash_insert(HASH *info,const byte *record)
+/*
+ * 将记录指针插入散列，成功时返回 0，失败时返回非 0 数值。
+ * */
+my_bool my_hash_insert(HASH *info, const byte *record)
 {
-  int flag;
-  uint halfbuff,hash_nr,first_index,idx;
-  byte *ptr_to_rec,*ptr_to_rec2;
-  HASH_LINK *data,*empty,*gpos,*gpos2,*pos;
+    int flag;
+    uint halfbuff,hash_nr,first_index,idx;
+    byte *ptr_to_rec,*ptr_to_rec2;
+    HASH_LINK *data,*empty,*gpos,*gpos2,*pos;
 
-  LINT_INIT(gpos); LINT_INIT(gpos2);
-  LINT_INIT(ptr_to_rec); LINT_INIT(ptr_to_rec2);
+    LINT_INIT(gpos); LINT_INIT(gpos2);
+    LINT_INIT(ptr_to_rec); LINT_INIT(ptr_to_rec2);
 
-  flag=0;
-  if (!(empty=(HASH_LINK*) alloc_dynamic(&info->array)))
-    return(TRUE);				/* No more memory */
+    flag=0;
+    if (!(empty=(HASH_LINK*) alloc_dynamic(&info->array)))
+        return(TRUE);				/* No more memory */
 
-  info->current_record= NO_RECORD;
-  data=dynamic_element(&info->array,0,HASH_LINK*);
-  halfbuff= info->blength >> 1;
+    info->current_record= NO_RECORD;
+    data=dynamic_element(&info->array, 0, HASH_LINK*);
+    halfbuff= info->blength >> 1;
 
-  idx=first_index=info->records-halfbuff;
-  if (idx != info->records)				/* If some records */
-  {
-    do
+    idx= first_index=info->records-halfbuff;
+    if (idx != info->records)				/* If some records */
     {
-      pos=data+idx;
-      hash_nr=rec_hashnr(info,pos->data);
-      if (flag == 0)				/* First loop; Check if ok */
-	if (hash_mask(hash_nr,info->blength,info->records) != first_index)
-	  break;
-      if (!(hash_nr & halfbuff))
-      {						/* Key will not move */
-	if (!(flag & LOWFIND))
-	{
-	  if (flag & HIGHFIND)
-	  {
-	    flag=LOWFIND | HIGHFIND;
-	    /* key shall be moved to the current empty position */
-	    gpos=empty;
-	    ptr_to_rec=pos->data;
-	    empty=pos;				/* This place is now free */
-	  }
-	  else
-	  {
-	    flag=LOWFIND | LOWUSED;		/* key isn't changed */
-	    gpos=pos;
-	    ptr_to_rec=pos->data;
-	  }
-	}
-	else
-	{
-	  if (!(flag & LOWUSED))
-	  {
-	    /* Change link of previous LOW-key */
-	    gpos->data=ptr_to_rec;
-	    gpos->next=(uint) (pos-data);
-	    flag= (flag & HIGHFIND) | (LOWFIND | LOWUSED);
-	  }
-	  gpos=pos;
-	  ptr_to_rec=pos->data;
-	}
-      }
-      else
-      {						/* key will be moved */
-	if (!(flag & HIGHFIND))
-	{
-	  flag= (flag & LOWFIND) | HIGHFIND;
-	  /* key shall be moved to the last (empty) position */
-	  gpos2 = empty; empty=pos;
-	  ptr_to_rec2=pos->data;
-	}
-	else
-	{
-	  if (!(flag & HIGHUSED))
-	  {
-	    /* Change link of previous hash-key and save */
-	    gpos2->data=ptr_to_rec2;
-	    gpos2->next=(uint) (pos-data);
-	    flag= (flag & LOWFIND) | (HIGHFIND | HIGHUSED);
-	  }
-	  gpos2=pos;
-	  ptr_to_rec2=pos->data;
-	}
-      }
-    }
-    while ((idx=pos->next) != NO_RECORD);
+        do {
+            pos=data+idx;
+            hash_nr=rec_hashnr(info,pos->data);
+            if (flag == 0)				/* First loop; Check if ok */
+                if (hash_mask(hash_nr,info->blength,info->records) != first_index)
+                    break;
+            if (!(hash_nr & halfbuff)) {						/* Key will not move */
+                if (!(flag & LOWFIND)) {
+                    if (flag & HIGHFIND) {
+                        flag=LOWFIND | HIGHFIND;
+                        /* key shall be moved to the current empty position */
+                        gpos=empty;
+                        ptr_to_rec=pos->data;
+                        empty=pos;				/* This place is now free */
+                    } else {
+                        flag=LOWFIND | LOWUSED;		/* key isn't changed */
+                        gpos=pos;
+                        ptr_to_rec=pos->data;
+                    }
+                } else {
+                    if (!(flag & LOWUSED)) {
+                        /* Change link of previous LOW-key */
+                        gpos->data=ptr_to_rec;
+                        gpos->next=(uint) (pos-data);
+                        flag= (flag & HIGHFIND) | (LOWFIND | LOWUSED);
+                    }
+                    gpos=pos;
+                    ptr_to_rec=pos->data;
+                }
+            } else {						/* key will be moved */
+                if (!(flag & HIGHFIND)) {
+                    flag= (flag & LOWFIND) | HIGHFIND;
+                    /* key shall be moved to the last (empty) position */
+                    gpos2 = empty; empty=pos;
+                    ptr_to_rec2=pos->data;
+                } else {
+                    if (!(flag & HIGHUSED)) {
+                        /* Change link of previous hash-key and save */
+                        gpos2->data=ptr_to_rec2;
+                        gpos2->next=(uint) (pos-data);
+                        flag= (flag & LOWFIND) | (HIGHFIND | HIGHUSED);
+                    }
+                    gpos2=pos;
+                    ptr_to_rec2=pos->data;
+                }
+            }
+        } while ((idx=pos->next) != NO_RECORD);
 
-    if ((flag & (LOWFIND | LOWUSED)) == LOWFIND)
-    {
-      gpos->data=ptr_to_rec;
-      gpos->next=NO_RECORD;
+        if ((flag & (LOWFIND | LOWUSED)) == LOWFIND) {
+            gpos->data=ptr_to_rec;
+            gpos->next=NO_RECORD;
+        }
+        if ((flag & (HIGHFIND | HIGHUSED)) == HIGHFIND) {
+            gpos2->data=ptr_to_rec2;
+            gpos2->next=NO_RECORD;
+        }
     }
-    if ((flag & (HIGHFIND | HIGHUSED)) == HIGHFIND)
-    {
-      gpos2->data=ptr_to_rec2;
-      gpos2->next=NO_RECORD;
-    }
-  }
-  /* Check if we are at the empty position */
+    /* Check if we are at the empty position */
 
-  idx=hash_mask(rec_hashnr(info,record),info->blength,info->records+1);
-  pos=data+idx;
-  if (pos == empty)
-  {
-    pos->data=(byte*) record;
-    pos->next=NO_RECORD;
-  }
-  else
-  {
-    /* Check if more records in same hash-nr family */
-    empty[0]=pos[0];
-    gpos=data+hash_rec_mask(info,pos,info->blength,info->records+1);
-    if (pos == gpos)
-    {
-      pos->data=(byte*) record;
-      pos->next=(uint) (empty - data);
+    idx=hash_mask(rec_hashnr(info,record),info->blength,info->records+1);
+    pos=data+idx;
+    if (pos == empty) {
+        pos->data=(byte*) record;
+        pos->next=NO_RECORD;
+    } else {
+        /* Check if more records in same hash-nr family */
+        empty[0]=pos[0];
+        gpos=data+hash_rec_mask(info,pos,info->blength,info->records+1);
+        if (pos == gpos) {
+            pos->data=(byte*) record;
+            pos->next=(uint) (empty - data);
+        } else {
+            pos->data=(byte*) record;
+            pos->next=NO_RECORD;
+            movelink(data, (uint) (pos - data), (uint) (gpos - data), (uint) (empty - data));
+        }
     }
-    else
-    {
-      pos->data=(byte*) record;
-      pos->next=NO_RECORD;
-      movelink(data,(uint) (pos-data),(uint) (gpos-data),(uint) (empty-data));
-    }
-  }
-  if (++info->records == info->blength)
-    info->blength+= info->blength;
-  return(0);
+    if (++info->records == info->blength)
+        info->blength+= info->blength;
+    return(0);
 }
 
 
@@ -426,88 +416,84 @@ my_bool my_hash_insert(HASH *info,const byte *record)
 ** ptr is removed.
 ** if there is a free-function it's called for record if found
 ******************************************************************************/
+/*
+ *
+ * 从散列中删除记录指针。会对实际指针值【而不是键】进行比较，仅删除一条记录
+ * */
 
-my_bool hash_delete(HASH *hash,byte *record)
+my_bool hash_delete(HASH *hash, byte *record)
 {
-  uint blength,pos2,pos_hashnr,lastpos_hashnr,idx,empty_index;
-  HASH_LINK *data,*lastpos,*gpos,*pos,*pos3,*empty;
-  DBUG_ENTER("hash_delete");
-  if (!hash->records)
-    DBUG_RETURN(1);
+    uint blength,pos2,pos_hashnr,lastpos_hashnr,idx,empty_index;
+    HASH_LINK *data,*lastpos,*gpos,*pos,*pos3,*empty;
+    DBUG_ENTER("hash_delete");
+    if (!hash->records) DBUG_RETURN(1);
 
-  blength=hash->blength;
-  data=dynamic_element(&hash->array,0,HASH_LINK*);
-  /* Search after record with key */
-  pos=data+ hash_mask(rec_hashnr(hash,record),blength,hash->records);
-  gpos = 0;
+    blength=hash->blength;
+    data=dynamic_element(&hash->array, 0, HASH_LINK*);
+    /* Search after record with key */
+    pos= data + hash_mask(rec_hashnr(hash, record), blength, hash->records);
+    gpos = 0;
 
-  while (pos->data != record)
-  {
-    gpos=pos;
-    if (pos->next == NO_RECORD)
-      DBUG_RETURN(1);			/* Key not found */
-    pos=data+pos->next;
-  }
-
-  if ( --(hash->records) < hash->blength >> 1) hash->blength>>=1;
-  hash->current_record= NO_RECORD;
-  lastpos=data+hash->records;
-
-  /* Remove link to record */
-  empty=pos; empty_index=(uint) (empty-data);
-  if (gpos)
-    gpos->next=pos->next;		/* unlink current ptr */
-  else if (pos->next != NO_RECORD)
-  {
-    empty=data+(empty_index=pos->next);
-    pos->data=empty->data;
-    pos->next=empty->next;
-  }
-
-  if (empty == lastpos)			/* last key at wrong pos or no next link */
-    goto exit;
-
-  /* Move the last key (lastpos) */
-  lastpos_hashnr=rec_hashnr(hash,lastpos->data);
-  /* pos is where lastpos should be */
-  pos=data+hash_mask(lastpos_hashnr,hash->blength,hash->records);
-  if (pos == empty)			/* Move to empty position. */
-  {
-    empty[0]=lastpos[0];
-    goto exit;
-  }
-  pos_hashnr=rec_hashnr(hash,pos->data);
-  /* pos3 is where the pos should be */
-  pos3= data+hash_mask(pos_hashnr,hash->blength,hash->records);
-  if (pos != pos3)
-  {					/* pos is on wrong posit */
-    empty[0]=pos[0];			/* Save it here */
-    pos[0]=lastpos[0];			/* This should be here */
-    movelink(data,(uint) (pos-data),(uint) (pos3-data),empty_index);
-    goto exit;
-  }
-  pos2= hash_mask(lastpos_hashnr,blength,hash->records+1);
-  if (pos2 == hash_mask(pos_hashnr,blength,hash->records+1))
-  {					/* Identical key-positions */
-    if (pos2 != hash->records)
-    {
-      empty[0]=lastpos[0];
-      movelink(data,(uint) (lastpos-data),(uint) (pos-data),empty_index);
-      goto exit;
+    while (pos->data != record) {
+        gpos=pos;
+        if (pos->next == NO_RECORD) DBUG_RETURN(1);			/* Key not found */
+        pos=data+pos->next;
     }
-    idx= (uint) (pos-data);		/* Link pos->next after lastpos */
-  }
-  else idx= NO_RECORD;		/* Different positions merge */
 
-  empty[0]=lastpos[0];
-  movelink(data,idx,empty_index,pos->next);
-  pos->next=empty_index;
+    if ( --(hash->records) < hash->blength >> 1) hash->blength>>=1;
+    hash->current_record= NO_RECORD;
+    lastpos=data+hash->records;
 
-exit:
-  VOID(pop_dynamic(&hash->array));
-  if (hash->free)
-    (*hash->free)((byte*) record);
-  DBUG_RETURN(0);
+    /* Remove link to record */
+    empty=pos; empty_index=(uint) (empty-data);
+    if (gpos)
+        gpos->next=pos->next;		/* unlink current ptr */
+    else if (pos->next != NO_RECORD) {
+        empty=data+(empty_index=pos->next);
+        pos->data=empty->data;
+        pos->next=empty->next;
+    }
+
+    if (empty == lastpos)			/* last key at wrong pos or no next link */
+        goto exit;
+
+    /* Move the last key (lastpos) */
+    lastpos_hashnr=rec_hashnr(hash,lastpos->data);
+    /* pos is where lastpos should be */
+    pos=data+hash_mask(lastpos_hashnr,hash->blength,hash->records);
+    if (pos == empty)			/* Move to empty position. */
+    {
+        empty[0]=lastpos[0];
+        goto exit;
+    }
+    pos_hashnr=rec_hashnr(hash,pos->data);
+    /* pos3 is where the pos should be */
+    pos3= data+hash_mask(pos_hashnr,hash->blength,hash->records);
+    if (pos != pos3) {					/* pos is on wrong posit */
+        empty[0]=pos[0];			/* Save it here */
+        pos[0]=lastpos[0];			/* This should be here */
+        movelink(data,(uint) (pos-data),(uint) (pos3-data),empty_index);
+        goto exit;
+    }
+    pos2= hash_mask(lastpos_hashnr,blength,hash->records+1);
+    if (pos2 == hash_mask(pos_hashnr,blength,hash->records+1)) {					/* Identical key-positions */
+        if (pos2 != hash->records) {
+            empty[0]=lastpos[0];
+            movelink(data,(uint) (lastpos-data),(uint) (pos-data),empty_index);
+            goto exit;
+        }
+        idx= (uint) (pos-data);		/* Link pos->next after lastpos */
+    } else idx= NO_RECORD;		/* Different positions merge */
+
+    empty[0]=lastpos[0];
+    movelink(data,idx,empty_index,pos->next);
+    pos->next=empty_index;
+
+    exit:
+    VOID(pop_dynamic(&hash->array));
+    if (hash->free)
+        (*hash->free)((byte*) record);
+    DBUG_RETURN(0);
 }
 
 	/*

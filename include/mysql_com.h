@@ -170,41 +170,98 @@ typedef struct st_vio Vio;
 
 typedef struct st_net {
 #if !defined(CHECK_EMBEDDED_DIFFERENCES) || !defined(EMBEDDED_LIBRARY)
-  Vio* vio;
+    Vio *vio; /*低层次网络IO描述符 V 虚拟*/
+    /*
+     * buff: 数据缓冲区起点
+     * buff_end：数据缓冲区终点
+     * write_pos：指向数据缓冲区下一次写操作将取出数据的位置
+     * read_pos：指向缓冲区下一次读操作将放入数据的位置
+     * */
   unsigned char *buff,*buff_end,*write_pos,*read_pos;
-  my_socket fd;					/* For Perl DBI/dbd */
-  unsigned long max_packet,max_packet_size;
-  unsigned int pkt_nr,compress_pkt_nr;
+    /*
+     * 操作系统套接字描述符编号
+     * */
+    my_socket fd;					/* For Perl DBI/dbd */
+
+    /* max_packet：网络包缓冲区的当前大小。
+     * max_packet_size：本连接上允许的包的大小范围；即：max-allowed-packet 配置的变量的值
+     * */
+    unsigned long max_packet,max_packet_size;
+    /*
+     * pkt_nr: 非压缩协议的当前包序号。包序号主要用于协议中的健全性检查
+     * compress_pkt_nr：压缩协议的当前包序号
+     * write_timeout：允许网络写操作在超时出错前占用的最长时间；net-write-timeout 变量配置的值
+     * read_timeout：允许网络读操作在超时出错前占用的最长时间：net-read-timeout 变量配置的值
+     * retry_count：在认定失败的网络 IO 操作为失败操作前应该重新尝试操作的次数。 即：net-retry-count 配置变量的数值
+     * */
+    unsigned int pkt_nr,compress_pkt_nr;
   unsigned int write_timeout, read_timeout, retry_count;
   int fcntl;
-  my_bool compress;
-  /*
-    The following variable is set if we are doing several queries in one
-    command ( as in LOAD TABLE ... FROM MASTER ),
-    and do not want to confuse the client with OK at the wrong time
-  */
+    /* 使用数据压缩时，设置为 1
+     * */
+    my_bool compress;
+    /*
+      The following variable is set if we are doing several queries in one
+      command ( as in LOAD TABLE ... FROM MASTER ),
+      and do not want to confuse the client with OK at the wrong time
+
+      remain_in_buf: 使用压缩协议时，读对等点【reading peer】可能会尝试从可能超过包压缩长度的套接口中读取数据。
+      可能读取下一个包的下一部分，本变量对于超额读取的字节数量进行追踪
+      length：当前包的长度，不包含包头
+      buf_length：包含当前的包的长度。
+      where_b: read_pos - buff: 的数值，为缓冲区中当前读取未知的偏移量
+
+    */
   unsigned long remain_in_buf,length, buf_length, where_b;
-  unsigned int *return_status;
-  unsigned char reading_or_writing;
-  char save_char;
-  my_bool no_send_ok;  /* For SPs and other things that do multiple stmts */
+    /*
+     * return_status: 执行与链接有关的THD线程描述符中的 server_status 变量
+     * */
+    unsigned int *return_status;
+    /*
+     * reading_or_writing: 在没有进行 IO操作时设置为 0 ，在读取时设置为 1，在写操作时，设置为 2；
+     * 在 show processlist 查询时使用
+     * */
+    unsigned char reading_or_writing;
+    /*
+     *
+     * */
+    char save_char;
+    /* 在大多数的时候，服务器上的成功操作是以 OK 包向客户端报告的
+     * */
+    my_bool no_send_ok;  /* For SPs and other things that do multiple stmts */
   my_bool no_send_eof; /* For SPs' first version read-only cursors */
   /*
     Set if OK packet is already sent, and we do not need to send error
     messages
   */
   my_bool no_send_error;
-  /*
-    Pointer to query object in query cache, do not equal NULL (0) for
-    queries in cache that have not stored its results yet
-  */
+    /*
+      Pointer to query object in query cache, do not equal NULL (0) for
+      queries in cache that have not stored its results yet
+    sqlstate[SQLSTATE_LENGTH+1]：缓冲区，包含 ODBC 和 JDBC驱动程序所使用SQL状态的数值
+    */
 #endif
-  char last_error[MYSQL_ERRMSG_SIZE], sqlstate[SQLSTATE_LENGTH+1];
+    /*
+     * last_error：发送给客户端的最后一个错误消息中的MySQL错误代码的数值，如果没有错误，则设置为 0
+     *
+     * */
+    char last_error[MYSQL_ERRMSG_SIZE], sqlstate[SQLSTATE_LENGTH + 1];
   unsigned int last_errno;
-  unsigned char error;
-  gptr query_cache_query;
-  my_bool report_error; /* We should report error (we have unreported error) */
-  my_bool return_errno;
+    /*
+     * 如果 IO 操作成功，设置为 0，协议上层逻辑错误设置为1，系统调用或者标准库错误设置为 2
+     * */
+    unsigned char error;
+    /*
+     * query_cache_query: 用于网络IO代码和查询高速缓存之间的恰当同步
+     * */
+    gptr query_cache_query;
+    /*
+     * report_error：向客户端报告错误设置为 1
+     * */
+    my_bool report_error; /* We should report error (we have unreported error) */
+    /* return_errno: 如果向客户端报告MySQL错误代码值则应该设置为 1
+     * */
+    my_bool return_errno;
 } NET;
 
 #define packet_error (~(unsigned long) 0)

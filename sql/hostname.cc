@@ -135,140 +135,135 @@ void reset_host_errors(struct in_addr *in)
 #define INADDR_LOOPBACK 0x7f000001UL
 #endif
 
+/*
+ * 将地址结构转换为主机的字符串表达式，可能时解答这个表达式。未解答的IP地址被转换为字符串表达式
+ * */
+
 my_string ip_to_hostname(struct in_addr *in, uint *errors)
 {
-  uint i;
-  host_entry *entry;
-  DBUG_ENTER("ip_to_hostname");
-  *errors=0;
+    uint i;
+    host_entry *entry;
+    DBUG_ENTER("ip_to_hostname");
+    *errors=0;
 
-  /* We always treat the loopback address as "localhost". */
-  if (in->s_addr == htonl(INADDR_LOOPBACK))   // is expanded inline by gcc
+    /* We always treat the loopback address as "localhost". */
+    if (in->s_addr == htonl(INADDR_LOOPBACK))   // is expanded inline by gcc
     DBUG_RETURN((char *)my_localhost);
 
-  /* Check first if we have name in cache */
-  if (!(specialflag & SPECIAL_NO_HOST_CACHE))
-  {
-    VOID(pthread_mutex_lock(&hostname_cache->lock));
-    if ((entry=(host_entry*) hostname_cache->search((gptr) &in->s_addr,0)))
-    {
-      char *name;
-      if (!entry->hostname)
-	name=0;					// Don't allow connection
-      else
-	name=my_strdup(entry->hostname,MYF(0));
-      *errors= entry->errors;
-      VOID(pthread_mutex_unlock(&hostname_cache->lock));
-      DBUG_RETURN(name);
+    /* Check first if we have name in cache */
+    if (!(specialflag & SPECIAL_NO_HOST_CACHE)) {
+        VOID(pthread_mutex_lock(&hostname_cache->lock));
+        if ((entry=(host_entry*) hostname_cache->search((gptr) &in->s_addr,0))) {
+            char *name;
+            if (!entry->hostname)
+                name=0;					// Don't allow connection
+            else
+                name=my_strdup(entry->hostname,MYF(0));
+            *errors= entry->errors;
+            VOID(pthread_mutex_unlock(&hostname_cache->lock));
+            DBUG_RETURN(name);
+        }
+        VOID(pthread_mutex_unlock(&hostname_cache->lock));
     }
-    VOID(pthread_mutex_unlock(&hostname_cache->lock));
-  }
 
-  struct hostent *hp, *check;
-  char *name;
-  LINT_INIT(check);
+    struct hostent *hp, *check;
+    char *name;
+    LINT_INIT(check);
 #if defined(HAVE_GETHOSTBYADDR_R) && defined(HAVE_SOLARIS_STYLE_GETHOST)
-  char buff[GETHOSTBYADDR_BUFF_SIZE],buff2[GETHOSTBYNAME_BUFF_SIZE];
-  int tmp_errno;
-  struct hostent tmp_hostent, tmp_hostent2;
+    char buff[GETHOSTBYADDR_BUFF_SIZE],buff2[GETHOSTBYNAME_BUFF_SIZE];
+    int tmp_errno;
+    struct hostent tmp_hostent, tmp_hostent2;
 #ifdef HAVE_purify
-  bzero(buff,sizeof(buff));		// Bug in purify
+    bzero(buff,sizeof(buff));		// Bug in purify
 #endif
-  if (!(hp=gethostbyaddr_r((char*) in,sizeof(*in),
-			   AF_INET,
-			   &tmp_hostent,buff,sizeof(buff),&tmp_errno)))
-  {
-    DBUG_PRINT("error",("gethostbyaddr_r returned %d",tmp_errno));
-    return 0;
-  }
-  if (!(check=my_gethostbyname_r(hp->h_name,&tmp_hostent2,buff2,sizeof(buff2),
-				 &tmp_errno)))
-  {
-    DBUG_PRINT("error",("gethostbyname_r returned %d",tmp_errno));
-    /*
-      Don't cache responses when the DSN server is down, as otherwise
-      transient DNS failure may leave any number of clients (those
-      that attempted to connect during the outage) unable to connect
-      indefinitely.
-    */
-    if (tmp_errno == HOST_NOT_FOUND || tmp_errno == NO_DATA)
+    if (!(hp=gethostbyaddr_r((char*) in,sizeof(*in),
+                 AF_INET,
+                 &tmp_hostent,buff,sizeof(buff),&tmp_errno)))
+    {
+      DBUG_PRINT("error",("gethostbyaddr_r returned %d",tmp_errno));
+      return 0;
+    }
+    if (!(check=my_gethostbyname_r(hp->h_name,&tmp_hostent2,buff2,sizeof(buff2),
+                   &tmp_errno)))
+    {
+      DBUG_PRINT("error",("gethostbyname_r returned %d",tmp_errno));
+      /*
+        Don't cache responses when the DSN server is down, as otherwise
+        transient DNS failure may leave any number of clients (those
+        that attempted to connect during the outage) unable to connect
+        indefinitely.
+      */
+      if (tmp_errno == HOST_NOT_FOUND || tmp_errno == NO_DATA)
+        add_wrong_ip(in);
+      my_gethostbyname_r_free();
+      DBUG_RETURN(0);
+    }
+    if (!hp->h_name[0])
+    {
+      DBUG_PRINT("error",("Got an empty hostname"));
       add_wrong_ip(in);
+      my_gethostbyname_r_free();
+      DBUG_RETURN(0);				// Don't allow empty hostnames
+    }
+    if (!(name=my_strdup(hp->h_name,MYF(0))))
+    {
+      my_gethostbyname_r_free();
+      DBUG_RETURN(0);				// out of memory
+    }
     my_gethostbyname_r_free();
-    DBUG_RETURN(0);
-  }
-  if (!hp->h_name[0])
-  {
-    DBUG_PRINT("error",("Got an empty hostname"));
-    add_wrong_ip(in);
-    my_gethostbyname_r_free();
-    DBUG_RETURN(0);				// Don't allow empty hostnames
-  }
-  if (!(name=my_strdup(hp->h_name,MYF(0))))
-  {
-    my_gethostbyname_r_free();
-    DBUG_RETURN(0);				// out of memory
-  }
-  my_gethostbyname_r_free();
 #else
-  VOID(pthread_mutex_lock(&LOCK_hostname));
-  if (!(hp=gethostbyaddr((char*) in,sizeof(*in), AF_INET)))
-  {
-    VOID(pthread_mutex_unlock(&LOCK_hostname));
-    DBUG_PRINT("error",("gethostbyaddr returned %d",errno));
+    VOID(pthread_mutex_lock(&LOCK_hostname));
+    if (!(hp=gethostbyaddr((char*) in,sizeof(*in), AF_INET))) {
+        VOID(pthread_mutex_unlock(&LOCK_hostname));
+        DBUG_PRINT("error", ("gethostbyaddr returned %d",errno));
 
-    if (errno == HOST_NOT_FOUND || errno == NO_DATA)
-      goto add_wrong_ip_and_return;
-    /* Failure, don't cache responce */
-    DBUG_RETURN(0);
-  }
-  if (!hp->h_name[0])				// Don't allow empty hostnames
-  {
+        if (errno == HOST_NOT_FOUND || errno == NO_DATA)
+            goto add_wrong_ip_and_return;
+        /* Failure, don't cache responce */
+        DBUG_RETURN(0);
+    }
+    if (!hp->h_name[0])				// Don't allow empty hostnames
+    {
+        VOID(pthread_mutex_unlock(&LOCK_hostname));
+        DBUG_PRINT("error", ("Got an empty hostname"));
+        goto add_wrong_ip_and_return;
+    }
+    if (!(name=my_strdup(hp->h_name,MYF(0)))) {
+        VOID(pthread_mutex_unlock(&LOCK_hostname));
+        DBUG_RETURN(0);				// out of memory
+    }
+    check=gethostbyname(name);
     VOID(pthread_mutex_unlock(&LOCK_hostname));
-    DBUG_PRINT("error",("Got an empty hostname"));
-    goto add_wrong_ip_and_return;
-  }
-  if (!(name=my_strdup(hp->h_name,MYF(0))))
-  {
-    VOID(pthread_mutex_unlock(&LOCK_hostname));
-    DBUG_RETURN(0);				// out of memory
-  }
-  check=gethostbyname(name);
-  VOID(pthread_mutex_unlock(&LOCK_hostname));
-  if (!check)
-  {
-    DBUG_PRINT("error",("gethostbyname returned %d",errno));
-    my_free(name,MYF(0));
-    DBUG_RETURN(0);
-  }
+    if (!check) {
+        DBUG_PRINT("error", ("gethostbyname returned %d",errno));
+        my_free(name, MYF(0));
+        DBUG_RETURN(0);
+    }
 #endif
 
-  /* Don't accept hostnames that starts with digits because they may be
-     false ip:s */
-  if (my_isdigit(&my_charset_latin1,name[0]))
-  {
-    char *pos;
-    for (pos= name+1 ; my_isdigit(&my_charset_latin1,*pos); pos++) ;
-    if (*pos == '.')
-    {
-      DBUG_PRINT("error",("mysqld doesn't accept hostnames that starts with a number followed by a '.'"));
-      my_free(name,MYF(0));
-      goto add_wrong_ip_and_return;
+    /* Don't accept hostnames that starts with digits because they may be
+       false ip:s */
+    if (my_isdigit(&my_charset_latin1,name[0])) {
+        char *pos;
+        for (pos= name+1 ; my_isdigit(&my_charset_latin1,*pos); pos++) ;
+        if (*pos == '.') {
+            DBUG_PRINT("error", ("mysqld doesn't accept hostnames that starts with a number followed by a '.'"));
+            my_free(name, MYF(0));
+            goto add_wrong_ip_and_return;
+        }
     }
-  }
 
-  /* Check that 'gethostbyname' returned the used ip */
-  for (i=0; check->h_addr_list[i]; i++)
-  {
-    if (*(uint32*)(check->h_addr_list)[i] == in->s_addr)
-    {
-      add_hostname(in,name);
-      DBUG_RETURN(name);
+    /* Check that 'gethostbyname' returned the used ip */
+    for (i=0; check->h_addr_list[i]; i++) {
+        if (*(uint32*)(check->h_addr_list)[i] == in->s_addr) {
+            add_hostname(in,name);
+            DBUG_RETURN(name);
+        }
     }
-  }
-  DBUG_PRINT("error",("Couldn't verify hostname with gethostbyname"));
-  my_free(name,MYF(0));
+    DBUG_PRINT("error", ("Couldn't verify hostname with gethostbyname"));
+    my_free(name, MYF(0));
 
-add_wrong_ip_and_return:
-  add_wrong_ip(in);
-  DBUG_RETURN(0);
+    add_wrong_ip_and_return:
+    add_wrong_ip(in);
+    DBUG_RETURN(0);
 }

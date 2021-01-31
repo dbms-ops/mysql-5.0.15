@@ -34,6 +34,9 @@
 #include "m_string.h"
 #include <stdarg.h>
 
+/*
+ * 从第二个参数开始，将下一个直至最后一个参数连接到 dst 中，以空字符结束。最后参数必须为Nulls。返回一个指向结果中的结束空字符的指针
+ * */
 char *strxmov(char *dst,const char *src, ...)
 {
   va_list pvar;

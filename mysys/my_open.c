@@ -34,6 +34,9 @@
 
   RETURN VALUE
     File descriptor
+
+  open 的封装器。上一个参数包含 MySQL API特定标志，File类型是 int 的别名
+
 */
 
 File my_open(const char *FileName, int Flags, myf MyFlags)
@@ -82,36 +85,36 @@ File my_open(const char *FileName, int Flags, myf MyFlags)
 
 */
 
+/*
+ * close 的封装器。上一个参数包含 MySQL API的特定标志
+ * */
 int my_close(File fd, myf MyFlags)
 {
-  int err;
-  DBUG_ENTER("my_close");
-  DBUG_PRINT("my",("fd: %d  MyFlags: %d",fd, MyFlags));
+    int err;
+    DBUG_ENTER("my_close");
+    DBUG_PRINT("my", ("fd: %d  MyFlags: %d",fd, MyFlags));
 
-  pthread_mutex_lock(&THR_LOCK_open);
-  do
-  {
-    err= close(fd);
-  } while (err == -1 && errno == EINTR);
+    pthread_mutex_lock(&THR_LOCK_open);
+    do {
+        err= close(fd);
+    } while (err == -1 && errno == EINTR);
 
-  if (err)
-  {
-    DBUG_PRINT("error",("Got error %d on close",err));
-    my_errno=errno;
-    if (MyFlags & (MY_FAE | MY_WME))
-      my_error(EE_BADCLOSE, MYF(ME_BELL+ME_WAITTANG),my_filename(fd),errno);
-  }
-  if ((uint) fd < my_file_limit && my_file_info[fd].type != UNOPEN)
-  {
-    my_free(my_file_info[fd].name, MYF(0));
+    if (err) {
+        DBUG_PRINT("error", ("Got error %d on close",err));
+        my_errno=errno;
+        if (MyFlags & (MY_FAE | MY_WME))
+            my_error(EE_BADCLOSE, MYF(ME_BELL + ME_WAITTANG), my_filename(fd), errno);
+    }
+    if ((uint) fd < my_file_limit && my_file_info[fd].type != UNOPEN) {
+        my_free(my_file_info[fd].name, MYF(0));
 #if defined(THREAD) && !defined(HAVE_PREAD)
-    pthread_mutex_destroy(&my_file_info[fd].mutex);
+        pthread_mutex_destroy(&my_file_info[fd].mutex);
 #endif
-    my_file_info[fd].type = UNOPEN;
-  }
-  my_file_opened--;
-  pthread_mutex_unlock(&THR_LOCK_open);
-  DBUG_RETURN(err);
+        my_file_info[fd].type = UNOPEN;
+    }
+    my_file_opened--;
+    pthread_mutex_unlock(&THR_LOCK_open);
+    DBUG_RETURN(err);
 } /* my_close */
 
 

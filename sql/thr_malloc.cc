@@ -35,7 +35,12 @@ void init_sql_alloc(MEM_ROOT *mem_root, uint block_size, uint pre_alloc)
   mem_root->error_handler=sql_alloc_error_handler;
 }
 
-
+/*
+ * 从当前线程描述符池中分配内存，应用在处理一个查询时进行小型内存分配；
+ * 所有通过sql_alloc() 分配的块都在查询结束时被释放。不必也不可能释放由 sql_alloc() 分配的单个块；
+ * 如果一个块在较长的时间间隔中使用，或者这个块很大，则应使用my_malloc() 来分配这个块，并且通过 my_free() 释放块
+ *
+ * */
 gptr sql_alloc(uint Size)
 {
   MEM_ROOT *root= *my_pthread_getspecific_ptr(MEM_ROOT**,THR_MALLOC);

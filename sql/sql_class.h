@@ -594,8 +594,15 @@ typedef struct system_status_var
   ulong bytes_sent;
   ulong com_other;
   ulong com_stat[(uint) SQLCOM_END];
-  ulong created_tmp_disk_tables;
-  ulong created_tmp_tables;
+    /*
+     * MySQL 尽可能将自己创建的临时表保存在内存中，但是有时不可能做到，原因在于表的大小或者内存存储引擎的限制。在磁盘上创建临时表，
+     * 随后计数器递增，本计数器的数值在created_tmp_disk_tables 下 SHOW STATUS 输出结果中显示
+     * */
+    ulong created_tmp_disk_tables;
+    /*
+     * 追踪自从服务器启动后创建了多少个临时表的计数器。
+     * */
+    ulong created_tmp_tables;
   ulong ha_commit_count;
   ulong ha_delete_count;
   ulong ha_read_first_count;
@@ -623,13 +630,21 @@ typedef struct system_status_var
   /* END OF KEY_CACHE parts */
 
   ulong net_big_packet_count;
-  ulong opened_tables;
+    /*
+     * 追踪字从服务器启动后执行了多少次打开表操作的计数器。在 opened_tables 下的SHOW STATUS输出结果中显示数值。
+     * 不要与Open_tables 的数值混淆，opened_tables 是当前位于表高速缓存中的表的数目
+     *
+     * */
+    ulong opened_tables;
   ulong select_full_join_count;
   ulong select_full_range_join_count;
   ulong select_range_count;
   ulong select_range_check_count;
   ulong select_scan_count;
-  ulong long_query_count;
+    /*
+     * long_query_count: 计算被优化器认为速度缓慢的查询。在 SHOW STATUS 的 Slow_queries 里显示
+     * */
+    ulong long_query_count;
   ulong filesort_merge_passes;
   ulong filesort_range_count;
   ulong filesort_rows;
@@ -667,10 +682,11 @@ void free_tmp_table(THD *thd, TABLE *entry);
 class Query_arena
 {
 public:
-  /*
-    List of items created in the parser for this query. Every item puts
-    itself to the list on creation (see Item::Item() for details))
-  */
+    /*
+      List of items created in the parser for this query. Every item puts
+      itself to the list on creation (see Item::Item() for details))
+      当前查询的所有分析树节点的链接列表
+    */
   Item *free_list;
   MEM_ROOT *mem_root;                   // Pointer to current memroot
 #ifndef DBUG_OFF
@@ -794,7 +810,9 @@ public:
   bool allow_sum_func;
 
   LEX_STRING name; /* name for named prepared statements */
-  LEX *lex;                                     // parse tree descriptor
+    /* 当前查询的分析描述符
+     * */
+    LEX *lex;                                     // parse tree descriptor
   /*
     Points to the query associated with this statement. It's const, but
     we need to declare it char * because all table handlers are written
@@ -817,7 +835,10 @@ public:
     This printing is needed at least in SHOW PROCESSLIST and SHOW INNODB
     STATUS.
   */
-  char *query;
+    /*
+     * 当前查询的纯文本格式
+     * */
+    char *query;
   uint32 query_length;                          // current query length
   Server_side_cursor *cursor;
 
@@ -942,20 +963,33 @@ void xid_cache_delete(XID_STATE *xid_state);
 
 class Security_context {
 public:
-  /*
-    host - host of the client
-    user - user of the client, set to NULL until the user has been read from
-    the connection
-    priv_user - The user privilege we are using. May be "" for anonymous user.
-    ip - client IP
-  */
+    /*
+      host - host of the client
+      客户端连接的主机
+      user - user of the client, set to NULL until the user has been read from
+      the connection
+      客户端向访问控制系统传递的用户
+      priv_user - The user privilege we are using. May be "" for anonymous user.
+      mysql.user 表中与传递给访问控制系统的用户数值相匹配的用户数值；与 user 相同
+      ip - client IP
+      连接 客户端的 IP 地址，数值形式
+    */
   char   *host, *user, *priv_user, *ip;
   /* The host privilege we are using */
   char   priv_host[MAX_HOSTNAME];
-  /* points to host if host is available, otherwise points to ip */
+    /*
+     * points to host if host is available, otherwise points to ip
+     * 客户端 IP 地址或者 host 地址
+     * */
   const char *host_or_ip;
-  ulong master_access;                 /* Global privileges from mysql.user */
-  ulong db_access;                     /* Privileges for current db */
+    /*
+     * 当前连接全局权限位掩码
+     * */
+    ulong master_access;                 /* Global privileges from mysql.user */
+    /*
+     * 当前连接所选择的数据库的客户端权限位掩码
+     * */
+    ulong db_access;                     /* Privileges for current db */
 
   void init();
   void destroy();
@@ -996,33 +1030,40 @@ enum prelocked_mode_type {NON_PRELOCKED= 0, PRELOCKED= 1,
 class Open_tables_state
 {
 public:
-  /*
-    open_tables - list of regular tables in use by this thread
-    temporary_tables - list of temp tables in use by this thread
-    handler_tables - list of tables that were opened with HANDLER OPEN
-     and are still in use by this thread
-  */
+    /*
+      open_tables - list of regular tables in use by this thread
+      线程使用的常规表的链接列表，非临时表。由 SELECT UPDATE DELETE INSERT REPLCACE ALTER 之类的查询引用
+      temporary_tables - list of temp tables in use by this thread
+      线程通过 HANDLER OPEN 打开的表的连接；HANDLER 命令提供了忽略优化器的低层次存储引擎的直接接口
+      handler_tables - list of tables that were opened with HANDLER OPEN
+       and are still in use by this thread
+      derived_tables: 本查询创建的派生表的链接列表，即：FROM 从句中的子查询得出的表
+
+    */
   TABLE *open_tables, *temporary_tables, *handler_tables, *derived_tables;
-  /*
-    During a MySQL session, one can lock tables in two modes: automatic
-    or manual. In automatic mode all necessary tables are locked just before
-    statement execution, and all acquired locks are stored in 'lock'
-    member. Unlocking takes place automatically as well, when the
-    statement ends.
-    Manual mode comes into play when a user issues a 'LOCK TABLES'
-    statement. In this mode the user can only use the locked tables.
-    Trying to use any other tables will give an error. The locked tables are
-    stored in 'locked_tables' member.  Manual locking is described in
-    the 'LOCK_TABLES' chapter of the MySQL manual.
-    See also lock_tables() for details.
-  */
+    /*
+      During a MySQL session, one can lock tables in two modes: automatic
+      or manual. In automatic mode all necessary tables are locked just before
+      statement execution, and all acquired locks are stored in 'lock'
+      member. Unlocking takes place automatically as well, when the
+      statement ends.
+      Manual mode comes into play when a user issues a 'LOCK TABLES'
+      statement. In this mode the user can only use the locked tables.
+      Trying to use any other tables will give an error. The locked tables are
+      stored in 'locked_tables' member.  Manual locking is described in
+      the 'LOCK_TABLES' chapter of the MySQL manual.
+      See also lock_tables() for details.
+      lock：本线程自动创建的所有表的列表，未使用 lock tables 创建。当服务器处理 SELECT、INSERT、UPDATE之类的查询，且发现有锁定需求时，
+      创建这种类型的锁
+    */
   MYSQL_LOCK *lock;
-  /*
-    Tables that were locked with explicit or implicit LOCK TABLES.
-    (Implicit LOCK TABLES happens when we are prelocking tables for
-     execution of statement which uses stored routines. See description
-     THD::prelocked_mode for more info.)
-  */
+    /*
+      Tables that were locked with explicit or implicit LOCK TABLES.
+      (Implicit LOCK TABLES happens when we are prelocking tables for
+       execution of statement which uses stored routines. See description
+       THD::prelocked_mode for more info.)
+      描述符结构，包含所有由本线程而不使用 LOCK TABLES语句锁定表的列表
+     */
   MYSQL_LOCK *locked_tables;
   /*
     prelocked_mode_type enum and prelocked_mode member are used for
@@ -1113,24 +1154,27 @@ public:
   ulong extra_length;
   String query_rest;
 #endif
-  NET	  net;				// client connection descriptor
-  MEM_ROOT warn_root;			// For warnings and errors
-  Protocol *protocol;			// Current protocol
+
+    NET net;                // client connection descriptor 客户端链接描述符
+    MEM_ROOT warn_root;            // For warnings and errors 发布警告或者错误的内存池
+    Protocol *protocol;            // Current protocol 客户端/服务器端通信协议描述符；根据当前类型是否是预处理类型指向不同的对象类型
   Protocol_simple protocol_simple;	// Normal protocol
   Protocol_prep protocol_prep;		// Binary protocol
-  HASH    user_vars;			// hash for user variables
-  String  packet;			// dynamic buffer for network I/O
+    HASH user_vars;            // hash for user variables 存储查询中使用的用户变量的散列；
+    String packet;            // dynamic buffer for network I/O 网络的动态缓冲区
   String  convert_buffer;               // buffer for charset conversions
   struct  sockaddr_in remote;		// client socket address
   struct  rand_struct rand;		// used for authentication
-  struct  system_variables variables;	// Changeable local variables
-  struct  system_status_var status_var; // Per thread statistic vars
-  THR_LOCK_INFO lock_info;              // Locking info of this thread
-  THR_LOCK_OWNER main_lock_id;          // To use for conventional queries
+    struct system_variables variables;    // Changeable local variables 可修改的本地变量
+    struct system_status_var status_var; // Per thread statistic vars 每个线程的静态变量
+    THR_LOCK_INFO lock_info;              // Locking info of this thread 当前线程的锁信息
+    THR_LOCK_OWNER main_lock_id;          // To use for conventional queries 常规查询的lock id
   THR_LOCK_OWNER *lock_id;              // If not main_lock_id, points to
                                         // the lock_id of a cursor.
   pthread_mutex_t LOCK_delete;		// Locked before thd is deleted
-  /* all prepared statements and cursors of this connection */
+    /* all prepared statements and cursors of this connection
+     * 连接上所有预处理语句和光标的散列值
+     * */
   Statement_map stmt_map;
   /*
     A pointer to the stack frame of handle_one_connection(),
@@ -1138,31 +1182,37 @@ public:
   */
   char	  *thread_stack;
 
-  /*
-    db - currently selected database
-    catalog - currently selected catalog
-    WARNING: some members of THD (currently 'db', 'catalog' and 'query')  are
-    set and alloced by the slave SQL thread (for the THD of that thread); that
-    thread is (and must remain, for now) the only responsible for freeing these
-    3 members. If you add members here, and you add code to set them in
-    replication, don't forget to free_them_and_set_them_to_0 in replication
-    properly. For details see the 'err:' label of the handle_slave_sql()
-    in sql/slave.cc.
-   */
+    /*
+      db - currently selected database
+      当前选择的数据库
+      catalog - currently selected catalog
+      WARNING: some members of THD (currently 'db', 'catalog' and 'query')  are
+      set and alloced by the slave SQL thread (for the THD of that thread); that
+      thread is (and must remain, for now) the only responsible for freeing these
+      3 members. If you add members here, and you add code to set them in
+      replication, don't forget to free_them_and_set_them_to_0 in replication
+      properly. For details see the 'err:' label of the handle_slave_sql()
+      in sql/slave.cc.
+     */
   char   *db, *catalog;
   Security_context main_security_ctx;
   Security_context *security_ctx;
 
   /* remote (peer) port */
   uint16 peer_port;
-  /*
-    Points to info-string that we show in SHOW PROCESSLIST
-    You are supposed to update thd->proc_info only if you have coded
-    a time-consuming piece that MySQL can get stuck in for a long time.
-  */
+    /*
+      Points to info-string that we show in SHOW PROCESSLIST
+      You are supposed to update thd->proc_info only if you have coded
+      a time-consuming piece that MySQL can get stuck in for a long time.
+      SHOW PROCESSLIST 输出结果集中的 info 列的数值，用于排除性能问题
+    */
   const char *proc_info;
 
-  ulong client_capabilities;		/* What the client supports */
+    /*
+     * What the client supports
+     * 支持的客户端：用于兼容新旧版本
+     * */
+    ulong client_capabilities;
   ulong max_client_packet_length;
 
   HASH		handler_tables_hash;
@@ -1175,13 +1225,25 @@ public:
 #ifndef DBUG_OFF
   uint dbug_sentry; // watch out for memory corruption
 #endif
-  struct st_my_thread_var *mysys_var;
-  /*
-    Type of current query: COM_STMT_PREPARE, COM_QUERY, etc. Set from
-    first byte of the packet in do_command()
-  */
+    /*
+     * 用于存储本线程可能正在等待的当前POSIX Threads 条件的有关信息。用于在关机或被 KILL 命令终止期间唤醒睡眠线程。
+     * 条件可人为传播，线程被唤醒，检查其中止标志，然后意识到有人提醒他们退出。详细情况参考：sql_class.h: enter_crond()和exit_crond()
+     * sql_class.cc: awake();
+     *
+     * */
+    struct st_my_thread_var *mysys_var;
+    /*
+      Type of current query: COM_STMT_PREPARE, COM_QUERY, etc. Set from
+      first byte of the packet in do_command()
+      当前服务器命令的类型。常见的是：COM_QUERY，所有可能的类型都在：include/mysql_com.h 的 enum_server_command 类型定义中列出
+    */
   enum enum_server_command command;
-  uint32     server_id;
+    /*
+     * 本变量在复制期间在从服务器SQL线程中使用。每个参与复制的服务器都必须在配置问价中分配一个唯一的ID。当主服务器进行更新时，
+     * 会将原服务器ID记录在二进制日志更新日志中。当常规客户端进行更新时，原始ID与服务器ID相同。但是从服务器线程必须保留主服务器原始ID，
+     * 以避免产生无限更新循环
+     * */
+    uint32     server_id;
   uint32     file_id;			// for LOAD DATA INFILE
   /*
     Used in error messages to tell user in what part of MySQL we found an
@@ -1192,43 +1254,52 @@ public:
   time_t     start_time,time_after_lock,user_time;
   time_t     connect_time,thr_create_time; // track down slow pthread_create
   thr_lock_type update_lock_default;
-  delayed_insert *di;
+    /*
+     * 延迟插入描述符，用于处理 INSERT DELAYED 查询，允许客户端请求以后在表可供使用时插入行
+     * */
+    delayed_insert *di;
 
   /* <> 0 if we are inside of trigger or stored function. */
   uint in_sub_stmt;
 
   /* container for handler's private per-connection data */
   void *ha_data[MAX_HA];
-  struct st_transactions {
-    SAVEPOINT *savepoints;
-    THD_TRANS all;			// Trans since BEGIN WORK
-    THD_TRANS stmt;			// Trans for current statement
-    bool on;                            // see ha_enable_transaction()
-    XID_STATE xid_state;
+
     /*
-       Tables changed in transaction (that must be invalidated in query cache).
-       List contain only transactional tables, that not invalidated in query
-       cache (instead of full list of changed in transaction tables).
-    */
-    CHANGED_TABLE_LIST* changed_tables;
-    MEM_ROOT mem_root; // Transaction-life memory allocation pool
-    void cleanup()
-    {
-      changed_tables= 0;
-      savepoints= 0;
+     * 事务描述符。用于管理逻辑更新记录，追踪表的变更轨迹
+     * */
+    struct st_transactions {
+        SAVEPOINT *savepoints;
+        THD_TRANS all;			// Trans since BEGIN WORK
+        THD_TRANS stmt;			// Trans for current statement
+        bool on;                            // see ha_enable_transaction()
+        XID_STATE xid_state;
+        /*
+           Tables changed in transaction (that must be invalidated in query cache).
+           List contain only transactional tables, that not invalidated in query
+           cache (instead of full list of changed in transaction tables).
+        */
+        CHANGED_TABLE_LIST* changed_tables;
+        /*
+         * 线程内存池
+         * */
+        MEM_ROOT mem_root; // Transaction-life memory allocation pool
+        void cleanup() {
+            changed_tables= 0;
+            savepoints= 0;
 #ifdef USING_TRANSACTIONS
-      free_root(&mem_root,MYF(MY_KEEP_PREALLOC));
+            free_root(&mem_root,MYF(MY_KEEP_PREALLOC));
 #endif
-    }
+        }
 #ifdef USING_TRANSACTIONS
-    st_transactions()
-    {
-      bzero((char*)this, sizeof(*this));
-      xid_state.xid.null();
-      init_sql_alloc(&mem_root, ALLOC_ROOT_MIN_BLOCK_SIZE, 0);
-    }
+        st_transactions()
+        {
+          bzero((char*)this, sizeof(*this));
+          xid_state.xid.null();
+          init_sql_alloc(&mem_root, ALLOC_ROOT_MIN_BLOCK_SIZE, 0);
+        }
 #endif
-  } transaction;
+    } transaction;
   Field      *dupp_field;
 #ifndef __WIN__
   sigset_t signals,block_signals;
@@ -1258,18 +1329,21 @@ public:
     Note: in the parser, stmt_arena == thd, even for PS/SP.
   */
   Query_arena *stmt_arena;
-  /*
-    next_insert_id is set on SET INSERT_ID= #. This is used as the next
-    generated auto_increment value in handler.cc
-  */
+    /*
+      next_insert_id is set on SET INSERT_ID= #. This is used as the next
+      generated auto_increment value in handler.cc
+      MySQL 支持自动生成唯一键。每个表只允许使用一个这样的键。支持客户端设置：SET INSERT_ID = value 设置下一个生成的键的数值；
+      next_insert_id 被指为指定值
+    */
   ulonglong  next_insert_id;
   /* Remember last next_insert_id to reset it if something went wrong */
   ulonglong  prev_insert_id;
-  /*
-    The insert_id used for the last statement or set by SET LAST_INSERT_ID=#
-    or SELECT LAST_INSERT_ID(#).  Used for binary log and returned by
-    LAST_INSERT_ID()
-  */
+    /*
+      The insert_id used for the last statement or set by SET LAST_INSERT_ID=#
+      or SELECT LAST_INSERT_ID(#).  Used for binary log and returned by
+      LAST_INSERT_ID()
+      上次生成自增唯一键的数值。函数 LAST_INSERT_ID()。支持：set LAST_INSERT_ID=value
+    */
   ulonglong  last_insert_id;
   /*
     Set to the first value that LAST_INSERT_ID() returned for the last
@@ -1281,34 +1355,46 @@ public:
   longlong   row_count_func;	/* For the ROW_COUNT() function */
   ha_rows    cuted_fields,
              sent_row_count, examined_row_count;
-  /*
-    The set of those tables whose fields are referenced in all subqueries
-    of the query.
-    TODO: possibly this it is incorrect to have used tables in THD because
-    with more than one subquery, it is not clear what does the field mean.
-  */
+    /*
+      The set of those tables whose fields are referenced in all subqueries
+      of the query.
+      TODO: possibly this it is incorrect to have used tables in THD because
+      with more than one subquery, it is not clear what does the field mean.
+      位掩码。用于追踪为了大幅查询而实际需要检查的表。优化器使用较多
+    */
   table_map  used_tables;
-  USER_CONN *user_connect;
-  CHARSET_INFO *db_charset;
-  /*
-    FIXME: this, and some other variables like 'count_cuted_fields'
-    maybe should be statement/cursor local, that is, moved to Statement
-    class. With current implementation warnings produced in each prepared
-    statement/cursor settle here.
-  */
+    /*
+     * 用户资源限制描述符，mysql 用于限制某个特定用户在 1 小时内能够执行的链接和查询的数目
+     * */
+    USER_CONN *user_connect;
+    /*
+     * 当前数据库的字符集描述符
+     * */
+    CHARSET_INFO *db_charset;
+    /*
+      FIXME: this, and some other variables like 'count_cuted_fields'
+      maybe should be statement/cursor local, that is, moved to Statement
+      class. With current implementation warnings produced in each prepared
+      statement/cursor settle here.
+      某些查询产生的警告信息；存储在该变量中，可以通过 SHOW WARNINGS 查看
+    */
   List	     <MYSQL_ERROR> warn_list;
   uint	     warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_END];
   uint	     total_warn_count;
-  /*
-    Id of current query. Statement can be reused to execute several queries
-    query_id is global in context of the whole MySQL server.
-    ID is automatically generated from mutex-protected counter.
-    It's used in handler code for various purposes: to check which columns
-    from table are necessary for this select, to check if it's necessary to
-    update auto-updatable fields (like auto_increment and timestamp).
-  */
+    /*
+      Id of current query. Statement can be reused to execute several queries
+      query_id is global in context of the whole MySQL server.
+      ID is automatically generated from mutex-protected counter.
+      It's used in handler code for various purposes: to check which columns
+      from table are necessary for this select, to check if it's necessary to
+      update auto-updatable fields (like auto_increment and timestamp).
+      当前所执行查询的内部ID。每个新查询都比前一个查询的数值 + 1
+    */
   query_id_t query_id, warn_id;
-  ulong      thread_id, col_access;
+    /* 用于确定用户在处理 show tables 是否具有某些表的权限
+     * 服务器为本线程分配的数字ID。该数值在 show processlist 输出结果的 ID 列显示，作为 kill 命令的参数
+     * */
+    ulong      thread_id, col_access;
 
   /* Statement id is thread-wide. This counter is used to generate ids */
   ulong      statement_id_counter;
@@ -1317,8 +1403,15 @@ public:
   long	     dbug_thread_id;
   pthread_t  real_id;
   uint	     tmp_table, global_read_lock;
-  uint	     server_status,open_options,system_thread;
-  uint32     db_length;
+    /* 客户端报告状态消息的位掩码。
+     * system_thread：设置非 0  值，只是非客户端线程的线程类型。线程类型包括：延迟插件线程、从复制服务器线程、事件调度器；
+     * 0 表示客户端线程
+     * */
+    uint	     server_status,open_options,system_thread;
+    /*
+     * 数据库的字符串长度在，指针为 db
+     * */
+    uint32     db_length;
   uint       select_number;             //number of select (used for EXPLAIN)
   /* variables.transaction_isolation is reset to this after each commit */
   enum_tx_isolation session_tx_isolation;
@@ -1328,11 +1421,17 @@ public:
   MEM_ROOT      *user_var_events_alloc; /* Allocate above array elements here */
 
   enum killed_state { NOT_KILLED=0, KILL_BAD_DATA=1, KILL_CONNECTION=ER_SERVER_SHUTDOWN, KILL_QUERY=ER_QUERY_INTERRUPTED };
-  killed_state volatile killed;
+    /* 在要求一个线程终止时，设置为 1。在耗时的操作中，每个线程都有责任检查该变量。如果置位，线程必须尽快执行退出
+     * */
+    killed_state volatile killed;
 
   /* scramble - random string sent to client on handshake */
   char	     scramble[SCRAMBLE_LENGTH+1];
-
+    /*
+     * slave_thread: 设置为 1 代表从服务器线程
+     * bootstrap: 自举线程：自举线程不是真正意义的线程，mysqld 以 -bootstrap 选项启动时，仅仅执行从标准输入端进行读取的查询。
+     * 一旦标准输入关闭执行退出
+     * */
   bool       slave_thread, one_shot_set;
   bool	     locked, some_tables_deleted;
   bool       last_cuted_field;

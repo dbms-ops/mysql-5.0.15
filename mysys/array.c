@@ -42,7 +42,9 @@
     TRUE	my_malloc_ci() failed
     FALSE	Ok
 */
-
+/*
+ * 初始化动态数组描述符。与散列不同，操作是对元素进行的，与指针参数相反。需要知道元素的大小
+ * */
 my_bool init_dynamic_array(DYNAMIC_ARRAY *array, uint element_size,
 			    uint init_alloc,
 			    uint alloc_increment CALLER_INFO_PROTO)
@@ -81,7 +83,9 @@ my_bool init_dynamic_array(DYNAMIC_ARRAY *array, uint element_size,
     TRUE	Insert failed
     FALSE	Ok
 */
-
+/*
+ * 在动态数组中插入一个元素。第二个参数是一个指针，在插入时，将通过它把数据复制到数组中
+ * */
 my_bool insert_dynamic(DYNAMIC_ARRAY *array, gptr element)
 {
   gptr buffer;
@@ -206,7 +210,10 @@ my_bool set_dynamic(DYNAMIC_ARRAY *array, gptr element, uint idx)
       gptr	Element to be returned. If idx > elements contain zeroes.
       idx	Index of element wanted. 
 */
-
+/*
+ * 将索引 idx 上的元素数据复制到由 element 指向的数组
+ * 注意： element 必须指向一个具有足够内存因而可包含 array element大小的位置
+ * */
 void get_dynamic(DYNAMIC_ARRAY *array, gptr element, uint idx)
 {
   if (idx >= array->elements)
@@ -228,7 +235,9 @@ void get_dynamic(DYNAMIC_ARRAY *array, gptr element, uint idx)
     delete_dynamic()
       array	Array to be deleted
 */
-
+/*
+ * 释放动态数组资源并使用描述符无效
+ * */
 void delete_dynamic(DYNAMIC_ARRAY *array)
 {
   if (array->buffer)

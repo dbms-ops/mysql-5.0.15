@@ -45,7 +45,10 @@ typedef ulonglong table_map;          /* Used for table bits in join */
 typedef Bitmap<64> key_map;           /* Used for finding keys */
 typedef ulong key_part_map;           /* Used for finding key parts */
 
-/* query_id */
+/*
+ * query_id: 用于位新请求分配唯一 ID数值计数器。每处理一个请求，就分配 thread_id 的当前数值，然后数值递增 1
+ *
+ * */
 typedef ulonglong query_id_t;
 extern query_id_t query_id;
 
@@ -1140,6 +1143,9 @@ extern ulong table_cache_size;
 extern ulong max_connections,max_connect_errors, connect_timeout;
 extern ulong slave_net_timeout, slave_trans_retries;
 extern uint max_user_connections;
+/*
+ * what_to_log: 包含SQL命令的位掩码，应该将该位掩码记录到服务器活动日志中，内部变量
+ * */
 extern ulong what_to_log,flush_time;
 extern ulong query_buff_size, thread_stack;
 extern ulong binlog_cache_size, max_binlog_cache_size, open_files_limit;
@@ -1152,6 +1158,10 @@ extern ulong opt_tc_log_size, tc_log_max_pages_used, tc_log_page_size;
 extern ulong tc_log_page_waits;
 extern my_bool relay_log_purge, opt_innodb_safe_binlog, opt_innodb;
 extern uint test_flags,select_errors,ha_open_options;
+/*
+ * protocol_version: 存储网络通信协议版本
+ * mysqld_port：服务器用于侦听请求的TCP/IP端口号
+ * */
 extern uint protocol_version, mysqld_port, dropping_tables;
 extern uint delay_key_write_options, lower_case_table_names;
 extern bool opt_endinfo, using_udf_functions;
@@ -1161,8 +1171,17 @@ extern bool using_update_log, opt_large_files, server_id_supplied;
 extern bool opt_log, opt_update_log, opt_bin_log, opt_slow_log, opt_error_log;
 extern bool opt_disable_networking, opt_skip_show_db;
 extern my_bool opt_character_set_client_handshake;
+/*
+ * shutdown_in_progress: 在服务器关机时设置的一个标志。用于避免多次启动关机过程
+ * */
 extern bool volatile abort_loop, shutdown_in_progress, grant_option;
 extern bool mysql_proc_table_exists;
+/*
+ * thread_count: 当前位于服务器中的线程的总数目。在 SHOW STATUS 下的 Threads_connected 中显示
+ * thread_running: 当前位一个请求服务器的线程的总数目。现有线程中有一些课呢个总是在等待请求，而不是在处理请求。在 SHOW STATUS 的
+ * Threads_running 显示
+ * */
+
 extern uint volatile thread_count, thread_running, global_read_lock;
 extern my_bool opt_sql_bin_update, opt_safe_user_create, opt_no_mix_types;
 extern my_bool opt_safe_show_db, opt_local_infile;
@@ -1179,7 +1198,11 @@ extern my_bool opt_enable_shared_memory;
 extern char *default_tz_name;
 extern my_bool opt_large_pages;
 extern uint opt_large_page_size;
-
+/*
+ * mysql_log：与 纯文本活动日志有关的日志对象
+ * mysql_slow_log：与慢查询日志有关的地址对象
+ * mysql_bin_log：与二进制更新日志有关的日志对象
+ * */
 extern MYSQL_LOG mysql_log,mysql_slow_log,mysql_bin_log;
 extern FILE *bootstrap_file;
 extern int bootstrap_error;
@@ -1217,6 +1240,9 @@ extern HASH open_cache;
 extern TABLE *unused_tables;
 extern I_List<i_string> binlog_do_db, binlog_ignore_db;
 extern const char* any_db;
+/*
+ * 服务器能识别的所有配置选项的描述符
+ * */
 extern struct my_option my_long_options[];
 extern const LEX_STRING view_type;
 

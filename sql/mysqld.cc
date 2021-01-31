@@ -390,23 +390,46 @@ uint lower_case_table_names;
 uint tc_heuristic_recover= 0;
 uint volatile thread_count, thread_running;
 ulonglong thd_startup_options;
+/*
+ * server_id: 每个参与复制的服务器都要有一个却别于复制点的独特的ID。本变量包含此服务器的独特的 ID。由 server-id 配置参数设置
+ * */
 ulong back_log, connect_timeout, concurrency, server_id;
 ulong table_cache_size, thread_stack, what_to_log;
 ulong query_buff_size, slow_launch_time, slave_open_temp_tables;
 ulong open_files_limit, max_binlog_size, max_relay_log_size;
 ulong slave_net_timeout, slave_trans_retries;
 ulong thread_cache_size=0, binlog_cache_size=0, max_binlog_cache_size=0;
+/*
+ * query_cache_size: 查询高速缓存大小，由 query-cache-size 配置变量设置
+ * */
 ulong query_cache_size=0;
+/*
+ * refresh_version: 每当数据库管理员发出 FLUSH TABLES命令时，数值就会增加。
+ * 当发出请求时，要求使用一个已经打开的表时，会对照全局 refresh_version 检查 table->refresh_version 的数值，
+ * 以便确定是都需要重新加载表
+ *
+ * */
 ulong refresh_version, flush_version;	/* Increments on each reload */
 query_id_t query_id;
+/*
+ * aborted_threads: 追踪自动成功建立后又异常终止的连接的数目。数值在 SHOW STATUS 下的 aborted_threads 显示
+ * aborted_connects: 追踪尝试连接的次数，这些尝试无法通过验证阶段，也无法进入发送请求的状态。
+ * 在 SHOW STATUS 输出结果中的 Aborted_connects 中显示
+ * */
 ulong aborted_threads, aborted_connects;
 ulong delayed_insert_timeout, delayed_insert_limit, delayed_queue_size;
 ulong delayed_insert_threads, delayed_insert_writes, delayed_rows_in_use;
 ulong delayed_insert_errors,flush_time;
 ulong specialflag=0;
 ulong binlog_cache_use= 0, binlog_cache_disk_use= 0;
+/*
+ * max_connections: 包含服务器将接受的同步连接的最大数目限制。由 max-connections 配置变量设置
+ * */
 ulong max_connections, max_connect_errors;
 uint  max_user_connections= 0;
+/*
+ * 用于位新创建的线程分配唯一ID数值计数器。每当创建一个新线程，就分配 thread_id 的当前数值，然后数值递增 1
+ * */
 ulong thread_id=1L,current_pid;
 ulong slow_launch_threads = 0, sync_binlog_period;
 ulong expire_logs_days = 0;
@@ -418,17 +441,30 @@ time_t start_time;
 char mysql_home[FN_REFLEN], pidfile_name[FN_REFLEN], system_time_zone[30];
 char *default_tz_name;
 char log_error_file[FN_REFLEN], glob_hostname[FN_REFLEN];
+/*
+ * mysql_charsets_dir: 包含目录路径，该目录中保存着字符集定义文件，由参数 character-sets-dir 配置参数设置
+ *
+ * */
 char mysql_real_data_home[FN_REFLEN],
-     language[FN_REFLEN], reg_ext[FN_EXTLEN], mysql_charsets_dir[FN_REFLEN],
-     *opt_init_file, *opt_tc_log_file,
-     def_ft_boolean_syntax[sizeof(ft_boolean_syntax)];
+        language[FN_REFLEN], reg_ext[FN_EXTLEN], mysql_charsets_dir[FN_REFLEN],
+        *opt_init_file, *opt_tc_log_file,
+        def_ft_boolean_syntax[sizeof(ft_boolean_syntax)];
 
 const key_map key_map_empty(0);
 key_map key_map_full(0);                        // Will be initialized later
 
 const char *opt_date_time_formats[3];
 
+/*
+ * 指向数据目录路径，由 datadir 配置变量参数设置
+ *
+ * */
 char *mysql_data_home= mysql_real_data_home;
+/*
+ * 包含在链接欢迎和日志中显示的服务器版本字符串
+ *
+ * */
+
 char server_version[SERVER_VERSION_LENGTH];
 char *mysqld_unix_port, *opt_mysql_tmpdir;
 const char **errmesg;			/* Error messages */
@@ -456,9 +492,19 @@ I_List<i_string_pair> replicate_rewrite_db;
 I_List<i_string> replicate_do_db, replicate_ignore_db;
 // allow the user to tell us which db to replicate and which to ignore
 I_List<i_string> binlog_do_db, binlog_ignore_db;
+/*
+ * 目前存在于服务器中的所有线程的列表，可以通过 SHOW PROCESSLIST或者SHOW FULL PROCESSLIST 查看
+ *
+ * */
 I_List<THD> threads;
+/*
+ * key_caches：用于支持MyISAM表的多键告诉缓存。存在于服务器中的MyISAM键高速缓存列表
+ * */
 I_List<NAMED_LIST> key_caches;
-
+/*
+ * global_system_variables: 服务器配置变量集描述符
+ * max_system_variables：包含可有可由客户端修改的服务器配置变量的数值极限
+ * */
 struct system_variables global_system_variables;
 struct system_variables max_system_variables;
 struct system_status_var global_status_var;
@@ -481,17 +527,26 @@ SHOW_COMP_OPTION have_blackhole_db;
 
 pthread_key(MEM_ROOT**,THR_MALLOC);
 pthread_key(THD*, THR_THD);
+/*
+ * LOCK_open：锁变量，用于保护在表告诉缓存上操作的重要区域，以及执行其他与打开表相关的操作
+ * LOCK_thread_count：锁变量，用于保护创建活着杀出线程的重要区域
+ * LOCK_status：锁变量，用于保护读取或修改状态变量的重要区域，可通过 SHOW STATUS 进行查看
+ * */
 pthread_mutex_t LOCK_mysql_create_db, LOCK_Acl, LOCK_open, LOCK_thread_count,
-		LOCK_mapped_file, LOCK_status, LOCK_global_read_lock,
-		LOCK_error_log, LOCK_uuid_generator,
-		LOCK_delayed_insert, LOCK_delayed_status, LOCK_delayed_create,
-		LOCK_crypt, LOCK_bytes_sent, LOCK_bytes_received,
-	        LOCK_global_system_variables,
-		LOCK_user_conn, LOCK_slave_list, LOCK_active_mi;
+        LOCK_mapped_file, LOCK_status, LOCK_global_read_lock,
+        LOCK_error_log, LOCK_uuid_generator,
+        LOCK_delayed_insert, LOCK_delayed_status, LOCK_delayed_create,
+        LOCK_crypt, LOCK_bytes_sent, LOCK_bytes_received,
+        LOCK_global_system_variables,
+        LOCK_user_conn, LOCK_slave_list, LOCK_active_mi;
 #ifdef HAVE_OPENSSL
 pthread_mutex_t LOCK_des_key_file;
 #endif
 rw_lock_t	LOCK_grant, LOCK_sys_init_connect, LOCK_sys_init_slave;
+/*
+ * COND_refresh: 用于向正在等待的线程发出信号：已经以某种方式改变了表状态
+ * COND_thread_count：用于向正在等待的线程发出信号：已经创建了新线程，或已经破坏了旧线程
+ * */
 pthread_cond_t COND_refresh,COND_thread_count;
 pthread_t signal_thread;
 pthread_attr_t connection_attrib;

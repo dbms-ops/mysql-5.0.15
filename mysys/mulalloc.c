@@ -32,33 +32,34 @@
 	NULL
 */
 
+
+/*
+ * 为一系列指针分配内存，并且将每个指针指向一个大型块的相应部分
+ * */
 gptr my_multi_malloc(myf myFlags, ...)
 {
-  va_list args;
-  char **ptr,*start,*res;
-  uint tot_length,length;
-  DBUG_ENTER("my_multi_malloc");
+    va_list args;
+    char **ptr,*start,*res;
+    uint tot_length,length;
+    DBUG_ENTER("my_multi_malloc");
 
-  va_start(args,myFlags);
-  tot_length=0;
-  while ((ptr=va_arg(args, char **)))
-  {
-    length=va_arg(args,uint);
-    tot_length+=ALIGN_SIZE(length);
-  }
-  va_end(args);
+    va_start(args, myFlags);
+    tot_length=0;
+    while ((ptr=va_arg(args, char **))) {
+        length=va_arg(args, uint);
+        tot_length+=ALIGN_SIZE(length);
+    }
+    va_end(args);
 
-  if (!(start=(char *) my_malloc(tot_length,myFlags)))
-    DBUG_RETURN(0); /* purecov: inspected */
+    if (!(start=(char *) my_malloc(tot_length, myFlags))) DBUG_RETURN(0); /* purecov: inspected */
 
-  va_start(args,myFlags);
-  res=start;
-  while ((ptr=va_arg(args, char **)))
-  {
-    *ptr=res;
-    length=va_arg(args,uint);
-    res+=ALIGN_SIZE(length);
-  }
-  va_end(args);
-  DBUG_RETURN((gptr) start);
+    va_start(args, myFlags);
+    res=start;
+    while ((ptr=va_arg(args, char **))) {
+        *ptr=res;
+        length=va_arg(args,uint);
+        res+=ALIGN_SIZE(length);
+    }
+    va_end(args);
+    DBUG_RETURN((gptr) start);
 }

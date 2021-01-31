@@ -36,7 +36,10 @@ typedef struct st_order {
   bool	 free_me;			/* true if item isn't shared  */
   bool	 in_field_list;			/* true if in select field list */
   bool   counter_used;                  /* parameter was counter of columns */
-  Field  *field;			/* If tmp-table group */
+    /*
+     * 本表中每个与的域描述符数组。域变量中的域数目
+     * */
+    Field  *field;			/* If tmp-table group */
   char	 *buff;				/* If tmp-table group */
   table_map used, depend_map;
 } ORDER;
@@ -44,7 +47,11 @@ typedef struct st_order {
 typedef struct st_grant_info
 {
   GRANT_TABLE *grant_table;
-  uint version;
+    /*
+     * version：用于检查在内存中被高速缓存的表是否是最新的表；如果其他线程执行 FLUSH TABLES，则表描述符不再有效。通过比较本变量的数值和
+     *        全局 refresh_version,可对此进行检查
+     * */
+    uint version;
   ulong privilege;
   ulong want_privilege;
 } GRANT_INFO;
@@ -101,10 +108,20 @@ class Table_triggers_list;
 typedef struct st_table_share
 {
   /* hash of field names (contains pointers to elements of field array) */
-  HASH	name_hash;			/* hash of field names */
+    /*
+     * 按照名称定为域的散列。如果域的数目至少为MAX_FIELDS_BEFORE_HASH 则使用，目前在 sql/mysql_priv.h 中定义
+     * */
+    HASH	name_hash;			/* hash of field names */
   MEM_ROOT mem_root;
-  TYPELIB keynames;			/* Pointers to keynames */
-  TYPELIB fieldnames;			/* Pointer to fieldnames */
+    /*
+     * keynames: 查询表，按照名称查询键数目
+     *
+     * */
+    TYPELIB keynames;			/* Pointers to keynames */
+    /*
+     * fieldnames：用于按照名称查找域数目的查找表
+     * */
+    TYPELIB fieldnames;			/* Pointer to fieldnames */
   TYPELIB *intervals;			/* pointer to interval info */
 #ifdef NOT_YET
   pthread_mutex_t mutex;                /* For locking the share  */
@@ -119,53 +136,121 @@ typedef struct st_table_share
   uint	*blob_field;			/* Index to blobs in Field arrray*/
   byte	*default_values;		/* row with default values */
   char	*comment;			/* Comment about table */
-  CHARSET_INFO *table_charset;		/* Default charset of string fields */
+    /*
+     * table_charset：本表的字符集描述符
+     * */
+    CHARSET_INFO *table_charset;		/* Default charset of string fields */
 
   /* A pair "database_name\0table_name\0", widely used as simply a db name */
-  char	*table_cache_key;
+    /*
+     * table_cache_key：用于在表高速缓存中定位本表描述符的散列值。通过连接数据库名称、表名称、临时表的选择字符串组成
+     * */
+    char	*table_cache_key;
   const char *db;                       /* Pointer to db */
-  const char *table_name;               /* Table name (for open) */
-  const char *path;                     /* Path to .frm file (from datadir) */
+    /*
+     * table_name：如果表没有别名，则与 read_name 相同。否则为别名。例如 SELECT t1.* FROM names AS t1；本变量被设置为 t1
+     *
+     * */
+    const char *table_name;               /* Table name (for open) */
+    /*
+     * path：到达文件系统表的 *.frm 文件的完整路径，相对于 datadir，没有 .frm 扩展名。例如：./db/t1
+     *
+     * */
+    const char *path;                     /* Path to .frm file (from datadir) */
   LEX_STRING connect_string;
-  key_map keys_in_use;                  /* Keys in use for table */
+    /*
+     * 映射，显示那个键可以在查询中使用。包括表中未以：ALTER TABLE DISABLE KEYS方式或者其他方式离线的键
+     * */
+    key_map keys_in_use;                  /* Keys in use for table */
   key_map keys_for_keyread;
-  ulong   avg_row_length;		/* create information */
+    /*
+     * avg_row_length:    创建表时，所使用的 AVG_ROW_LENGTH数值。暗示存储引擎希望变量长度记录表中的平均记录长度为多少
+     * */
+    ulong   avg_row_length;		/* create information */
   ulong   raid_chunksize;
   ulong   version, flush_version, mysql_version;
   ulong   timestamp_offset;		/* Set to offset+1 of record */
-  ulong   reclength;			/* Recordlength */
-
+    /*
+     * 记录长度，以字节为单位。当在优化器层次的内存中处理记录时，表示记录长度，但当由存储引擎存储时，不是记录长度
+     * */
+    ulong   reclength;			/* Recordlength */
+    /*
+     * max_rows：创建表时所使用的 MAX_ROWS 数值，不是对于表行数目的严格限制，而是一种提示。用于帮助存储引擎算出最佳的记录存储格式
+     * min_rows：创表时所使用的 MIN_ROWS 的数值，目前存储在表定义文件中，没有使用
+     * */
   ha_rows min_rows, max_rows;		/* create information */
-  enum db_type db_type;			/* table_type for handler */
-  enum row_type row_type;		/* How rows are stored */
-  enum tmp_table_type tmp_table;
+    /*
+     * db_type：本表的存储引擎类型
+     * */
+    enum db_type db_type;			/* table_type for handler */
+    /*
+     * row_type：记录是固定长度还是动态长度
+     * */
+    enum row_type row_type;		/* How rows are stored */
+    /* tmp_table：为分临时表设置设置为：NO_TMP_TABLE、为非事务表设置：TMP_TABLE、为事务表设置：TRANSACTIONAL_TMP_TABLE
+     * */
+    enum tmp_table_type tmp_table;
 
   uint blob_ptr_size;			/* 4 or 8 */
   uint null_bytes, last_null_bit_pos;
-  uint key_length;			/* Length of table_cache_key */
+    /*
+     * key_length: table_cache_key 的长度，单位为字节
+     * */
+    uint key_length;			/* Length of table_cache_key */
   uint fields;				/* Number of fields */
-  uint rec_buff_length;                 /* Size of table->record[] buffer */
-  uint keys, key_parts;
+    /*
+     * rec_buff_length：为处理一个记录分配的临时缓冲区的长度
+     * */
+    uint rec_buff_length;                 /* Size of table->record[] buffer */
+    /*
+     * keys：表中键的数目
+     * key_parts:保存键组建的数目。一个列在他所在的键中只计算一次
+     * */
+    uint keys, key_parts;
   uint max_key_length, max_unique_length, total_key_length;
   uint uniques;                         /* Number of UNIQUE index */
-  uint null_fields;			/* number of null fields */
-  uint blob_fields;			/* number of blob fields */
+    /*
+     * 表中包含 NULL 值的域的数目
+     * */
+    uint null_fields;			/* number of null fields */
+    /*
+     * 表中类型为 BLOB 和 TEXT 的域的数目
+     * */
+    uint blob_fields;			/* number of blob fields */
   uint varchar_fields;                  /* number of varchar fields */
-  uint db_create_options;		/* Create options from database */
+    /*
+     * db_create_options: 创建表时所使用的选项的位掩码
+     * */
+    uint db_create_options;		/* Create options from database */
   uint db_options_in_use;		/* Options in use */
   uint db_record_offset;		/* if HA_REC_IN_SEQ */
   uint raid_type, raid_chunks;
   uint open_count;			/* Number of tables in open list */
   /* Index of auto-updated TIMESTAMP field in field array */
-  uint primary_key;
+    /*
+     * primary_key: 键数组中的主键的数组索引，如果存在主键则为0，否则为 MAX_KEY，定义位置为：sql/unireg.h
+     * */
+    uint primary_key;
   uint timestamp_field_offset;
-  uint next_number_index;
+    /*
+     * next_number_index: 如果域具有自动累加域 【只能够有一个】，则指向其描述符。否则设置为 0
+     * */
+    uint next_number_index;
   uint next_number_key_offset;
-  uchar	  frm_version;
+    /*
+     * frm_version:·表定义文件 .frm 版本格式
+     * */
+    uchar	  frm_version;
   my_bool system;			/* Set if system record */
   my_bool crypted;                      /* If .frm file is crypted */
-  my_bool db_low_byte_first;		/* Portable row format */
-  my_bool crashed;
+    /*
+     * db_low_byte_first: 指出本表的存储引擎的整理域的字节数字
+     * */
+    my_bool db_low_byte_first;		/* Portable row format */
+    /*
+     * crashed：存储引擎在任何时候报告表的内部结构被破坏，本标志设置为 1
+     * */
+    my_bool crashed;
   my_bool is_view;
   my_bool name_lock, replace_with_name_lock;
   /*
@@ -182,19 +267,35 @@ typedef struct st_table_share
 
 struct st_table {
   TABLE_SHARE	*s;
-  handler	*file;
+    /*
+     * 本表存储引擎对象的指针。该对象用于所有低层次数据存储和检索操作
+     * */
+    handler	*file;
 #ifdef NOT_YET
   struct st_table *used_next, **used_prev;	/* Link to used tables */
   struct st_table *open_next, **open_prev;	/* Link to open tables */
 #endif
-  struct st_table *next, *prev;
+    /*
+     *  next: 指向表链接列表中的下一个表
+     *  prev：指向表链接列表中的前一个表
+     * */
+    struct st_table *next, *prev;
 
-  THD	*in_use;                        /* Which thread uses this */
+    /*
+     * in_use: 指向当前使用本表的线程的描述符
+     * */
+    THD	*in_use;                        /* Which thread uses this */
   Field **field;			/* Pointer to fields */
-
+    /*
+     * 一对临时缓冲区，用于优化器记录操作
+     * */
   byte *record[2];			/* Pointer to records */
   byte *insert_values;                  /* used by INSERT ... UPDATE */
-  key_map quick_keys, used_keys, keys_in_use_for_query;
+    /*
+     * quick_keys:键映射，可以用于实现当前查询的范围优化
+     * used_keys: 键映射，可在当前查询中使用，是经过某些过滤的keys_in_use 的数值，出于对于查询 FORCE KEY，和 IGNORE KEY 指令的考虑
+     * */
+    key_map quick_keys, used_keys, keys_in_use_for_query;
   KEY  *key_info;			/* data of keys in database */
 
   Field *next_number_field,		/* Set if next_number is activated */
@@ -205,12 +306,22 @@ struct st_table {
   /* Table's triggers, 0 if there are no of them */
   Table_triggers_list *triggers;
   struct st_table_list *pos_in_table_list;/* Element referring to this table */
-  ORDER		*group;
+    /*
+     * group：被优化器用于解决通过临时表进行GROUP BY查询。如果使用该技术，则在临时表中创建适当的键
+     * */
+    ORDER		*group;
   const char	*alias;            	  /* alias or table name */
   uchar		*null_flags;
-  query_id_t	query_id;
+    /*
+     * query_id：目前使用本表描述符的查询的 ID
+     * */
+    query_id_t	query_id;
 
-  ha_rows	quick_rows[MAX_KEY];
+    /*
+     * quick_rows: 被优化器用于存储这个估计值：对于表中的每个键，键范围将于多少条记录匹配
+     * */
+
+    ha_rows	quick_rows[MAX_KEY];
   key_part_map  const_key_parts[MAX_KEY];
   uint		quick_key_parts[MAX_KEY];
 
@@ -227,11 +338,17 @@ struct st_table {
     as example).
   */
   timestamp_auto_set_type timestamp_field_type;
-  table_map	map;                    /* ID bit of table (1,2,4,8,16...) */
+    /*
+     * map: 在连接期间，每个表实例都被分配给一个编号。本变量是一个位掩码，第一给对应于表编号集。其余则清 0
+     * */
+    table_map	map;                    /* ID bit of table (1,2,4,8,16...) */
   
   uint		tablenr,used_fields;
   uint          temp_pool_slot;		/* Used by intern temp tables */
-  uint		status;                 /* What's in record[0] */
+    uint status;                 /* What's in record[0],显示上一次操作记录的状态的位掩码。指出在 record 变量中查找的内容*/
+    /*
+     * db_stat: 用于本表的各种能力和操作的位掩码
+     * */
   uint		db_stat;		/* mode of file as in handler.h */
   /* number of select if it is derived table */
   uint          derived_select_number;
@@ -249,12 +366,22 @@ struct st_table {
     NULL, including columns declared as "not null" (see maybe_null).
   */
   my_bool null_row;
-  my_bool force_index;
+    /*
+     * force_index: 如果表中有一个被当前查询中的FORCE INDEX执行引用的索引，则设置为 1
+     * */
+    my_bool force_index;
   my_bool distinct,const_table,no_rows;
-  my_bool key_read, no_keyread;
+    /*
+     * key_read：优化器的一个标志，用于标记将使用一个键在当前查询中从本表中检索数据
+     * no_keyread：优化器标志：不要使用键读取本表
+     * */
+    my_bool key_read, no_keyread;
   my_bool locked_by_flush;
   my_bool locked_by_name;
-  my_bool fulltext_searched;
+    /*
+     * fulltext_searched: 优化器所使用的一个标志，用于标记将使用纯文本键查找来搜索表
+     * */
+    my_bool fulltext_searched;
   my_bool no_cache;
   /* To signal that we should reset query_id for tables and cols */
   my_bool clear_query_id;
@@ -263,9 +390,18 @@ struct st_table {
   my_bool alias_name_used;		/* true if table_name is alias */
 
   REGINFO reginfo;			/* field connections */
-  MEM_ROOT mem_root;
-  GRANT_INFO grant;
-  FILESORT_INFO sort;
+    /*
+     * mem_root: 用于各种表描述符成员的内存池
+     * */
+    MEM_ROOT mem_root;
+    /*
+     * grant：本表的访问控制信息描述符
+     * */
+    GRANT_INFO grant;
+    /*
+     * sort: 用于记录指针排序的描述符结构。用于解决 GROUP BY和ORDER BY查询
+     * */
+    FILESORT_INFO sort;
   TABLE_SHARE share_not_to_be_used;     /* To be deleted when true shares */
 
   bool fill_item_list(List<Item> *item_list) const;

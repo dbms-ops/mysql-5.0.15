@@ -406,80 +406,76 @@ my_bool reinit_io_cache(IO_CACHE *info, enum cache_type type,
   Returns 0 we succeeded in reading all data
 */
 
+/*
+ * 从 与 info 有关的高速缓存中读取，从技术上讲，当高速缓存中没有足够可满足球球的数据是，实际上是一个预处理器宏，
+ * 是_my_b_read()函数的别名，成功时返回 0，失败时返回 非 0 值
+ * */
+
 int _my_b_read(register IO_CACHE *info, byte *Buffer, uint Count)
 {
-  uint length,diff_length,left_length;
-  my_off_t max_length, pos_in_file;
-  DBUG_ENTER("_my_b_read");
+    uint length,diff_length,left_length;
+    my_off_t max_length, pos_in_file;
+    DBUG_ENTER("_my_b_read");
 
-  if ((left_length=(uint) (info->read_end-info->read_pos)))
-  {
-    DBUG_ASSERT(Count >= left_length);	/* User is not using my_b_read() */
-    memcpy(Buffer,info->read_pos, (size_t) (left_length));
-    Buffer+=left_length;
-    Count-=left_length;
-  }
+    if ((left_length=(uint) (info->read_end - info->read_pos))) {
+        DBUG_ASSERT(Count >= left_length);	/* User is not using my_b_read() */
+        memcpy(Buffer, info->read_pos, (size_t) (left_length));
+        Buffer+=left_length;
+        Count-=left_length;
+    }
 
-  /* pos_in_file always point on where info->buffer was read */
-  pos_in_file=info->pos_in_file+(uint) (info->read_end - info->buffer);
-  if (info->seek_not_done)
-  {					/* File touched, do seek */
-    VOID(my_seek(info->file,pos_in_file,MY_SEEK_SET,MYF(0)));
-    info->seek_not_done=0;
-  }
-  diff_length=(uint) (pos_in_file & (IO_SIZE-1));
-  if (Count >= (uint) (IO_SIZE+(IO_SIZE-diff_length)))
-  {					/* Fill first intern buffer */
-    uint read_length;
-    if (info->end_of_file == pos_in_file)
-    {					/* End of file */
-      info->error=(int) left_length;
-      DBUG_RETURN(1);
+    /* pos_in_file always point on where info->buffer was read */
+    pos_in_file=info->pos_in_file+(uint) (info->read_end - info->buffer);
+    if (info->seek_not_done) {					/* File touched, do seek */
+        VOID(my_seek(info->file,pos_in_file,MY_SEEK_SET,MYF(0)));
+        info->seek_not_done=0;
     }
-    length=(Count & (uint) ~(IO_SIZE-1))-diff_length;
-    if ((read_length=my_read(info->file,Buffer,(uint) length,info->myflags))
-	!= (uint) length)
-    {
-      info->error= (read_length == (uint) -1 ? -1 :
-		    (int) (read_length+left_length));
-      DBUG_RETURN(1);
+    diff_length=(uint) (pos_in_file & (IO_SIZE-1));
+    if (Count >= (uint) (IO_SIZE+(IO_SIZE-diff_length))) {					/* Fill first intern buffer */
+        uint read_length;
+        if (info->end_of_file == pos_in_file) {					/* End of file */
+            info->error=(int) left_length;
+            DBUG_RETURN(1);
+        }
+        length=(Count & (uint) ~(IO_SIZE-1))-diff_length;
+        if ((read_length=my_read(info->file,Buffer,(uint) length,info->myflags))
+            != (uint) length) {
+            info->error= (read_length == (uint) -1 ? -1 :
+                          (int) (read_length+left_length));
+            DBUG_RETURN(1);
+        }
+        Count-=length;
+        Buffer+=length;
+        pos_in_file+=length;
+        left_length+=length;
+        diff_length=0;
     }
-    Count-=length;
-    Buffer+=length;
-    pos_in_file+=length;
-    left_length+=length;
-    diff_length=0;
-  }
 
-  max_length=info->read_length-diff_length;
-  if (info->type != READ_FIFO &&
-      max_length > (info->end_of_file - pos_in_file))
-    max_length = info->end_of_file - pos_in_file;
-  if (!max_length)
-  {
-    if (Count)
-    {
-      info->error= left_length;		/* We only got this many char */
-      DBUG_RETURN(1);
+    max_length=info->read_length-diff_length;
+    if (info->type != READ_FIFO &&
+            max_length > (info->end_of_file - pos_in_file))
+        max_length = info->end_of_file - pos_in_file;
+    if (!max_length) {
+        if (Count) {
+            info->error= left_length;		/* We only got this many char */
+            DBUG_RETURN(1);
+        }
+        length=0;				/* Didn't read any chars */
+    } else if ((length=my_read(info->file, info->buffer, (uint) max_length,
+                               info->myflags)) < Count ||
+               length == (uint) -1) {
+        if (length != (uint) -1)
+            memcpy(Buffer, info->buffer, (size_t) length);
+        info->pos_in_file= pos_in_file;
+        info->error= length == (uint) -1 ? -1 : (int) (length+left_length);
+        info->read_pos= info->read_end=info->buffer;
+        DBUG_RETURN(1);
     }
-    length=0;				/* Didn't read any chars */
-  }
-  else if ((length=my_read(info->file,info->buffer,(uint) max_length,
-			   info->myflags)) < Count ||
-	   length == (uint) -1)
-  {
-    if (length != (uint) -1)
-      memcpy(Buffer,info->buffer,(size_t) length);
-    info->pos_in_file= pos_in_file;
-    info->error= length == (uint) -1 ? -1 : (int) (length+left_length);
-    info->read_pos=info->read_end=info->buffer;
-    DBUG_RETURN(1);
-  }
-  info->read_pos=info->buffer+Count;
-  info->read_end=info->buffer+length;
-  info->pos_in_file=pos_in_file;
-  memcpy(Buffer,info->buffer,(size_t) Count);
-  DBUG_RETURN(0);
+    info->read_pos=info->buffer+Count;
+    info->read_end=info->buffer+length;
+    info->pos_in_file=pos_in_file;
+    memcpy(Buffer, info->buffer, (size_t) Count);
+    DBUG_RETURN(0);
 }
 
 #ifdef THREAD
@@ -955,41 +951,42 @@ int _my_b_get(IO_CACHE *info)
 }
 
 	/* Returns != 0 if error on write */
+/*
+ * 向与 info 有关的 IO 高速缓存写入，从技术上讲，当高速缓存中没有足够的空间，同时为了满足请求而要求执行一个物理写时，
+ * 实际上是一个预处理器宏，是 _my_b_write() 函数的别名。成功时返回0，失败，返回 非0 值
+ * */
 
 int _my_b_write(register IO_CACHE *info, const byte *Buffer, uint Count)
 {
-  uint rest_length,length;
+    uint rest_length,length;
 
-  if (info->pos_in_file+info->buffer_length > info->end_of_file)
-  {
-    my_errno=errno=EFBIG;
-    return info->error = -1;
-  }
-
-  rest_length=(uint) (info->write_end - info->write_pos);
-  memcpy(info->write_pos,Buffer,(size_t) rest_length);
-  Buffer+=rest_length;
-  Count-=rest_length;
-  info->write_pos+=rest_length;
-  if (my_b_flush_io_cache(info,1))
-    return 1;
-  if (Count >= IO_SIZE)
-  {					/* Fill first intern buffer */
-    length=Count & (uint) ~(IO_SIZE-1);
-    if (info->seek_not_done)
-    {					/* File touched, do seek */
-      VOID(my_seek(info->file,info->pos_in_file,MY_SEEK_SET,MYF(0)));
-      info->seek_not_done=0;
+    if (info->pos_in_file + info->buffer_length > info->end_of_file) {
+        my_errno= errno=EFBIG;
+        return info->error = -1;
     }
-    if (my_write(info->file,Buffer,(uint) length,info->myflags | MY_NABP))
-      return info->error= -1;
-    Count-=length;
-    Buffer+=length;
-    info->pos_in_file+=length;
-  }
-  memcpy(info->write_pos,Buffer,(size_t) Count);
-  info->write_pos+=Count;
-  return 0;
+
+    rest_length=(uint) (info->write_end - info->write_pos);
+    memcpy(info->write_pos, Buffer, (size_t) rest_length);
+    Buffer+=rest_length;
+    Count-=rest_length;
+    info->write_pos+=rest_length;
+    if (my_b_flush_io_cache(info, 1))
+        return 1;
+    if (Count >= IO_SIZE) {					/* Fill first intern buffer */
+        length=Count & (uint) ~(IO_SIZE-1);
+        if (info->seek_not_done) {					/* File touched, do seek */
+            VOID(my_seek(info->file,info->pos_in_file,MY_SEEK_SET,MYF(0)));
+            info->seek_not_done=0;
+        }
+        if (my_write(info->file,Buffer,(uint) length,info->myflags | MY_NABP))
+            return info->error= -1;
+        Count-=length;
+        Buffer+=length;
+        info->pos_in_file+=length;
+    }
+    memcpy(info->write_pos, Buffer, (size_t) Count);
+    info->write_pos+=Count;
+    return 0;
 }
 
 
@@ -1117,7 +1114,11 @@ int my_block_write(register IO_CACHE *info, const byte *Buffer, uint Count,
 #define UNLOCK_APPEND_BUFFER
 #endif
 
-
+/*
+ * 从内存缓冲区将数据写出道文件描述符。注意，flush_io_chache() 实际上是my_b_flush_io_cahce() 宏的别名。
+ * 成功时返回0，失败时返回 非 0
+ *
+ * */
 int my_b_flush_io_cache(IO_CACHE *info, int need_append_buffer_lock)
 {
   uint length;
@@ -1209,49 +1210,50 @@ int my_b_flush_io_cache(IO_CACHE *info, int need_append_buffer_lock)
    #  Error
 */
 
+
+/*
+ * 关闭与描述符有关的高速缓存，在必要时执行清 0
+ * */
 int end_io_cache(IO_CACHE *info)
 {
-  int error=0;
-  IO_CACHE_CALLBACK pre_close;
-  DBUG_ENTER("end_io_cache");
-  DBUG_PRINT("enter",("cache: 0x%lx", (ulong) info));
+    int error=0;
+    IO_CACHE_CALLBACK pre_close;
+    DBUG_ENTER("end_io_cache");
+    DBUG_PRINT("enter", ("cache: 0x%lx", (ulong) info));
 
 #ifdef THREAD
-  /*
-    if IO_CACHE is shared between several threads, only one
-    thread needs to call end_io_cache() - just as init_io_cache()
-    should be called only once and then memcopy'ed
-  */
-  if (info->share)
-  {
-    pthread_cond_destroy(&info->share->cond);
-    pthread_mutex_destroy(&info->share->mutex);
-    info->share=0;
-  }
+    /*
+      if IO_CACHE is shared between several threads, only one
+      thread needs to call end_io_cache() - just as init_io_cache()
+      should be called only once and then memcopy'ed
+    */
+    if (info->share)
+    {
+      pthread_cond_destroy(&info->share->cond);
+      pthread_mutex_destroy(&info->share->mutex);
+      info->share=0;
+    }
 #endif
 
-  if ((pre_close=info->pre_close))
-  {
-    (*pre_close)(info);
-    info->pre_close= 0;
-  }
-  if (info->alloced_buffer)
-  {
-    info->alloced_buffer=0;
-    if (info->file != -1)			/* File doesn't exist */
-      error= my_b_flush_io_cache(info,1);
-    my_free((gptr) info->buffer,MYF(MY_WME));
-    info->buffer=info->read_pos=(byte*) 0;
-  }
-  if (info->type == SEQ_READ_APPEND)
-  {
-    /* Destroy allocated mutex */
-    info->type= TYPE_NOT_SET;
+    if ((pre_close=info->pre_close)) {
+        (*pre_close)(info);
+        info->pre_close= 0;
+    }
+    if (info->alloced_buffer) {
+        info->alloced_buffer=0;
+        if (info->file != -1)			/* File doesn't exist */
+            error= my_b_flush_io_cache(info,1);
+        my_free((gptr) info->buffer, MYF(MY_WME));
+        info->buffer= info->read_pos=(byte*) 0;
+    }
+    if (info->type == SEQ_READ_APPEND) {
+        /* Destroy allocated mutex */
+        info->type= TYPE_NOT_SET;
 #ifdef THREAD
-    pthread_mutex_destroy(&info->append_buffer_lock);
+        pthread_mutex_destroy(&info->append_buffer_lock);
 #endif
-  }
-  DBUG_RETURN(error);
+    }
+    DBUG_RETURN(error);
 } /* end_io_cache */
 
 

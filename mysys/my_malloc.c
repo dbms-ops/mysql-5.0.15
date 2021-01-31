@@ -22,7 +22,10 @@
 #include "mysys_err.h"
 #include <m_string.h>
 
-	/* My memory allocator */
+/*
+ * My memory allocator
+ * malloc() 的可移植性封装器 用于为全局缓冲区和其他生命周期大于一次查询的对象以及大型内存块分配内存块
+ * */
 
 gptr my_malloc(unsigned int size, myf my_flags)
 {

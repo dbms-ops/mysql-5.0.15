@@ -398,6 +398,10 @@ int	__void__;
 #endif /* DONT_DEFINE_VOID */
 
 #if defined(_lint) || defined(FORCE_INIT_OF_VARS)
+/*
+ * 代码中的一些变量通常不进行初始化，而一些程序错误检测工具认为会这样做。这些宏的使用是为了检测出在使用这些工具时，
+ * 或者在定义了 FORCE_INIT_OF_VARS 时，对变量进行初始化，而不是任何时候都进行初始化，会浪费 CPU
+ * */
 #define LINT_INIT(var)	var=0			/* No uninitialize-warning */
 #else
 #define LINT_INIT(var)
@@ -424,12 +428,29 @@ typedef unsigned short ushort;
 
 #define CMP_NUM(a,b)    (((a) < (b)) ? -1 : ((a) == (b)) ? 0 : 1)
 #define sgn(a)		(((a) < 0) ? -1 : ((a) > 0) ? 1 : 0)
+/*
+ * 交换类型为 t 的变量 a 和 b 的内容
+ *
+ * */
 #define swap_variables(t, a, b) { register t dummy; dummy= a; a= b; b= dummy; }
 #define test(a)		((a) ? 1 : 0)
+/*
+ * 如果 a 大于 b，则将a的数值设置为 b
+ * */
 #define set_if_bigger(a,b)  do { if ((a) < (b)) (a)=(b); } while(0)
+/*
+ * 如果 b 小于 a，则将 a 的数值设置为 b
+ * */
 #define set_if_smaller(a,b) do { if ((a) > (b)) (a)=(b); } while(0)
+/*
+ * 如果在 a 中置位的所有的位同样在b中置位，则返回一个 非 0 值
+ * */
 #define test_all_bits(a,b) (((a) & (b)) == (b))
 #define set_bits(type, bit_count) (sizeof(type)*8 <= (bit_count) ? ~(type) 0 : ((((type) 1) << (bit_count)) - (type) 1))
+/*
+ * 返回数组中 A 中的元素数目
+ * */
+
 #define array_elements(A) ((uint) (sizeof(A)/sizeof(A[0])))
 #ifndef HAVE_RINT
 #define rint(A) floor((A)+(((A) < 0)? -0.5 : 0.5))
@@ -985,25 +1006,35 @@ typedef char		bool;	/* Ordinary boolean values 0 1 */
 
 /* Optimized store functions for Intel x86 */
 #if defined(__i386__) && !defined(_WIN64)
+/*
+ * sint2korr: 返回存储在位置 A 的一个有福好的 2 字节整数，低字节优先。
+ * 在一个小端体系结构中，宏只是一个指针解参考。但是在一个大段系统中，必须进行计算，以便于返回争取的值
+ * */
 #define sint2korr(A)	(*((int16 *) (A)))
+/*
+ * sint3korr: 返回存储在位置A的一个有字符号3字节整数，低字节优先
+ * */
 #define sint3korr(A)	((int32) ((((uchar) (A)[2]) & 128) ? \
-				  (((uint32) 255L << 24) | \
-				   (((uint32) (uchar) (A)[2]) << 16) |\
-				   (((uint32) (uchar) (A)[1]) << 8) | \
-				   ((uint32) (uchar) (A)[0])) : \
-				  (((uint32) (uchar) (A)[2]) << 16) |\
-				  (((uint32) (uchar) (A)[1]) << 8) | \
-				  ((uint32) (uchar) (A)[0])))
+                  (((uint32) 255L << 24) | \
+                   (((uint32) (uchar) (A)[2]) << 16) |\
+                   (((uint32) (uchar) (A)[1]) << 8) | \
+                   ((uint32) (uchar) (A)[0])) : \
+                  (((uint32) (uchar) (A)[2]) << 16) |\
+                  (((uint32) (uchar) (A)[1]) << 8) | \
+                  ((uint32) (uchar) (A)[0])))
+/*
+ * sint4korr： 返回存储在位置A的一个有字符号 4 字节整数，低字节优先
+ * */
 #define sint4korr(A)	(*((long *) (A)))
 #define uint2korr(A)	(*((uint16 *) (A)))
 #ifdef HAVE_purify
 #define uint3korr(A)	(uint32) (((uint32) ((uchar) (A)[0])) +\
-				  (((uint32) ((uchar) (A)[1])) << 8) +\
-				  (((uint32) ((uchar) (A)[2])) << 16))
+                  (((uint32) ((uchar) (A)[1])) << 8) +\
+                  (((uint32) ((uchar) (A)[2])) << 16))
 #else
 /*
    ATTENTION !
-   
+
     Please, note, uint3korr reads 4 bytes (not 3) !
     It means, that you have to provide enough allocated space !
 */
@@ -1011,11 +1042,14 @@ typedef char		bool;	/* Ordinary boolean values 0 1 */
 #endif
 #define uint4korr(A)	(*((unsigned long *) (A)))
 #define uint5korr(A)	((ulonglong)(((uint32) ((uchar) (A)[0])) +\
-				    (((uint32) ((uchar) (A)[1])) << 8) +\
-				    (((uint32) ((uchar) (A)[2])) << 16) +\
-				    (((uint32) ((uchar) (A)[3])) << 24)) +\
-				    (((ulonglong) ((uchar) (A)[4])) << 32))
+                    (((uint32) ((uchar) (A)[1])) << 8) +\
+                    (((uint32) ((uchar) (A)[2])) << 16) +\
+                    (((uint32) ((uchar) (A)[3])) << 24)) +\
+                    (((ulonglong) ((uchar) (A)[4])) << 32))
 #define uint8korr(A)	(*((ulonglong *) (A)))
+/*
+ * 返回存储在位置A的一个有字符号 8 字节整数，低字节优先
+ * */
 #define sint8korr(A)	(*((longlong *) (A)))
 #define int2store(T,A)	*((uint16*) (T))= (uint16) (A)
 #define int3store(T,A)  do { *(T)=  (uchar) ((A));\
@@ -1039,7 +1073,7 @@ do { doubleget_union _tmp; \
      _tmp.m[1] = *(((long*) (M))+1); \
      (V) = _tmp.v; } while(0)
 #define doublestore(T,V) do { *((long *) T) = ((doubleget_union *)&V)->m[0]; \
-			     *(((long *) T)+1) = ((doubleget_union *)&V)->m[1]; \
+                 *(((long *) T)+1) = ((doubleget_union *)&V)->m[1]; \
                          } while (0)
 #define float4get(V,M) do { *((long *) &(V)) = *((long*) (M)); } while(0)
 #define float8get(V,M) doubleget((V),(M))
@@ -1069,20 +1103,36 @@ do { doubleget_union _tmp; \
 				(((int32) ((uchar) (A)[2]) << 16)) +\
 				(((int32) ((int16) (A)[3]) << 24)))
 #define sint8korr(A)	(longlong) uint8korr(A)
+/*
+ * 返回一个存储在位置 A 的无符号 2 字节整数，低字节优先
+ * */
 #define uint2korr(A)	(uint16) (((uint16) ((uchar) (A)[0])) +\
 				  ((uint16) ((uchar) (A)[1]) << 8))
+/*
+ * 返回一个存储在位置 A 的无符号 3 字节整数，低字节优先
+ * */
 #define uint3korr(A)	(uint32) (((uint32) ((uchar) (A)[0])) +\
 				  (((uint32) ((uchar) (A)[1])) << 8) +\
 				  (((uint32) ((uchar) (A)[2])) << 16))
+
+/*
+ * 返回一个存储在位置 A 的无符号 4 字节整数，低字节优先
+ * */
 #define uint4korr(A)	(uint32) (((uint32) ((uchar) (A)[0])) +\
 				  (((uint32) ((uchar) (A)[1])) << 8) +\
 				  (((uint32) ((uchar) (A)[2])) << 16) +\
 				  (((uint32) ((uchar) (A)[3])) << 24))
+/*
+ * 返回一个存储在位置 A 的无符号 5 字节整数，低字节优先
+ * */
 #define uint5korr(A)	((ulonglong)(((uint32) ((uchar) (A)[0])) +\
 				    (((uint32) ((uchar) (A)[1])) << 8) +\
 				    (((uint32) ((uchar) (A)[2])) << 16) +\
 				    (((uint32) ((uchar) (A)[3])) << 24)) +\
 				    (((ulonglong) ((uchar) (A)[4])) << 32))
+/*
+ * 返回一个存储在位置 A 的无符号 8 字节整数，低字节优先
+ * */
 #define uint8korr(A)	((ulonglong)(((uint32) ((uchar) (A)[0])) +\
 				    (((uint32) ((uchar) (A)[1])) << 8) +\
 				    (((uint32) ((uchar) (A)[2])) << 16) +\
@@ -1092,24 +1142,43 @@ do { doubleget_union _tmp; \
 				    (((uint32) ((uchar) (A)[6])) << 16) +\
 				    (((uint32) ((uchar) (A)[7])) << 24))) <<\
 				    32))
+/*
+ * 从位置 T 开始使用 2 字节存储 A数值，无论机器字节序如何都是低字节优先
+ * */
 #define int2store(T,A)       do { uint def_temp= (uint) (A) ;\
                                   *((uchar*) (T))=  (uchar)(def_temp); \
                                    *((uchar*) (T)+1)=(uchar)((def_temp >> 8)); \
                              } while(0)
+/*
+ * 从位置 T 开始使用 3 字节存储 A 数值，无论机器字节序如何都是低字节优先
+ * */
 #define int3store(T,A)       do { /*lint -save -e734 */\
                                   *((uchar*)(T))=(uchar) ((A));\
                                   *((uchar*) (T)+1)=(uchar) (((A) >> 8));\
                                   *((uchar*)(T)+2)=(uchar) (((A) >> 16)); \
                                   /*lint -restore */} while(0)
+
+/*
+ * 从位置 T 开始使用 4 字节存储 A数值，无论机器字节序如何都是低字节优先
+ * */
+
 #define int4store(T,A)       do { *((char *)(T))=(char) ((A));\
                                   *(((char *)(T))+1)=(char) (((A) >> 8));\
                                   *(((char *)(T))+2)=(char) (((A) >> 16));\
                                   *(((char *)(T))+3)=(char) (((A) >> 24)); } while(0)
+/*
+ * 从位置 T 开始使用 5 字节存储 A数值，无论机器字节序如何都是低字节优先
+ * */
+
 #define int5store(T,A)       do { *((char *)(T))=((A));\
                                   *(((char *)(T))+1)=(((A) >> 8));\
                                   *(((char *)(T))+2)=(((A) >> 16));\
                                   *(((char *)(T))+3)=(((A) >> 24)); \
                                   *(((char *)(T))+4)=(((A) >> 32)); } while(0)
+/*
+ * 从位置 T 开始使用 5 字节存储 A数值，无论机器字节序如何都是低字节优先
+ * */
+
 #define int8store(T,A)       do { uint def_temp= (uint) (A), def_temp2= (uint) ((A) >> 32); \
                                   int4store((T),def_temp); \
                                   int4store((T+4),def_temp2); } while(0)

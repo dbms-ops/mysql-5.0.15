@@ -34,6 +34,9 @@
 
 #if !defined(MC68000) && !defined(DS90)
 
+/*
+ * 与 strcpy 相似，但返回值指向 dst 的新结束空字符
+ * */
 char *strmov(register char *dst, register const char *src)
 {
   while ((*dst++ = *src++)) ;
