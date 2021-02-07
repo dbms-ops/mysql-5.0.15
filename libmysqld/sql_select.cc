@@ -7956,7 +7956,7 @@ Field *create_tmp_field(THD *thd, TABLE *table,Item *item, Item::Type type,
 
 /*
   Create a temp table according to a field list.
-
+  依据 field list 创建一组临时表
   SYNOPSIS
     create_tmp_table()
     thd                  thread handle

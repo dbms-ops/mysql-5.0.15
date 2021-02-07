@@ -2559,7 +2559,12 @@ static bool init_global_datetime_format(timestamp_type format_type,
   return 0;
 }
 
-
+/*
+ * 1、初始化mysqld.cc定义的全局变量
+ * 2、初始化默认storage engine
+ * 3、所有show status 需要的变量加入到all_status_vars
+ *
+ * */
 static int init_common_variables(const char *conf_file_name, int argc,
 				 char **argv, const char **groups)
 {
@@ -4407,7 +4412,9 @@ error:
 /****************************************************************************
   Handle start options
 ******************************************************************************/
-
+/*
+ * 启动的全局变量
+ * */
 enum options_mysqld
 {
   OPT_ISAM_LOG=256,            OPT_SKIP_NEW, 
@@ -4582,7 +4589,10 @@ enum options_mysqld
 
 
 #define LONG_TIMEOUT ((ulong) 3600L*24L*365L)
-
+/*
+ * 初始化大多数配置文件选项，特殊选项初始化使用: get_one_options()
+ *
+ * */
 struct my_option my_long_options[] =
 {
   {"help", '?', "Display this help and exit.", 
@@ -4647,6 +4657,11 @@ Disable with --skip-bdb (will save memory).",
    (gptr*) &berkeley_tmpdir, (gptr*) &berkeley_tmpdir, 0, GET_STR,
    REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 #endif /* HAVE_BERKELEY_DB */
+    /*
+     * 当内存表的大小大于 tmp_table_size,需要创建磁盘表。如果青醋的直到临时结果将超出内存的存储范围， 那么 big-tables
+     * 可以提示服务器不必创建内存表，直接使用磁盘表。位于: create_tmp_table() sql/sql_select.cc 文件中
+     *
+     * */
   {"big-tables", OPT_BIG_TABLES,
    "Allow big result sets by saving all temporary sets on file (Solves most 'table full' errors).",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
@@ -4703,6 +4718,20 @@ Disable with --skip-bdb (will save memory).",
   {"default-collation", OPT_DEFAULT_COLLATION, "Set the default collation (deprecated option, use --collation-server instead).",
    (gptr*) &default_collation_name, (gptr*) &default_collation_name,
    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0 },
+   /*
+    * 表的默认的存储引擎；
+    * 存储引擎相关的文件：
+    *   1、sql/nandler.h
+    *   2、sql/handler.cc
+    *   3、sql/ha_myisam.h
+    *   4、sql/ha_myisam.cc
+    *   5、sql/ha_innodb.h
+    *   6、sql/ha_innodb.cc
+    *   7、sql/heap.h
+    *   8、sql/heap.cc
+    *   9、其他类似上述命名格式的文件
+    *
+    * */
   {"default-storage-engine", OPT_STORAGE_ENGINE,
    "Set the default storage engine (table type) for tables.", 0, 0,
    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
@@ -4712,6 +4741,35 @@ Disable with --skip-bdb (will save memory).",
   {"default-time-zone", OPT_DEFAULT_TIME_ZONE, "Set the default time zone.",
    (gptr*) &default_tz_name, (gptr*) &default_tz_name,
    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0 },
+
+   /*
+    * delay-key-write: 本选项是对于 MyISAM 表中的 更新键 【INSERT、UPDATE、DELETE】进行优化。
+    * 通常服务器在每个查询结束时，将更改过的键缓冲区刷新出去，通常会导致性能下降严重；
+    * 为解决上述问题，进行延迟键块刷新；
+    * 以下场景进行立即刷新：
+    *
+    * 1、通过 FLUSH TABLES 从表高速缓冲中删除所有的表
+    * 2、通过 FLUSH TBLES 从表高速缓存中删除表
+    * 3、在服务器关机时刷新表高速缓存
+    * 4、用新表替代表高速缓存中的表
+    * 5、用新快替代表高速缓存中的修改的键块
+    *
+    * ON：
+    *   仅仅以这种方式处理具有 DELAY_KEY_WRITE = 1 设置的表
+    *
+    * ALL：
+    *   设置为 ALL时，则无论表选项如何，都会延迟全部 MyISAM键写入
+    *
+    * OFF：
+    *   无论表选项如何，都不会延迟键写入
+    *
+    * 提高性能，但是 增加了发生崩溃时，表损坏的风险
+    *
+    * 参考:
+    *   myisam/mi_locking.c 中的 mi_lock_database()、flush_key_blocks()、mysys/mf_keycache.c：flush_key_blocks()
+    *
+    * */
+
   {"delay-key-write", OPT_DELAY_KEY_WRITE, "Type of DELAY_KEY_WRITE.",
    0,0,0, GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
   {"delay-key-write-for-all-tables", OPT_DELAY_KEY_WRITE_ALL,
@@ -5409,7 +5467,12 @@ log and this option does nothing anymore.",
     "Number of best matches to use for query expansion",
     (gptr*) &ft_query_expansion_limit, (gptr*) &ft_query_expansion_limit, 0, GET_ULONG,
     REQUIRED_ARG, 20, 0, 1000, 0, 1, 0},
-  { "ft_stopword_file", OPT_FT_STOPWORD_FILE,
+
+    /*
+     * MyISAM 表支持纯文本键，
+     * */
+
+    { "ft_stopword_file", OPT_FT_STOPWORD_FILE,
     "Use stopwords from this file instead of built-in list.",
     (gptr*) &ft_stopword_file, (gptr*) &ft_stopword_file, 0, GET_STR,
     REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
@@ -5866,6 +5929,9 @@ The minimum value for this variable is 4096.",
     (gptr*) &opt_date_time_formats[MYSQL_TIMESTAMP_TIME],
     (gptr*) &opt_date_time_formats[MYSQL_TIMESTAMP_TIME],
     0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+    /*
+     * 内存表的最大尺寸。当达到内存表的最大尺寸时，需要把临时表转换为磁盘类型
+     * */
   {"tmp_table_size", OPT_TMP_TABLE_SIZE,
    "If an in-memory temporary table exceeds this size, MySQL will automatically convert it to an on-disk MyISAM table.",
    (gptr*) &global_system_variables.tmp_table_size,
@@ -6422,7 +6488,9 @@ static void mysql_init_variables(void)
 #endif
 }
 
-
+/*
+ * 用于执行复杂类型的初始化
+ * */
 static my_bool
 get_one_option(int optid, const struct my_option *opt __attribute__((unused)),
 	       char *argument)
@@ -6998,7 +7066,9 @@ static void option_error_reporter(enum loglevel level, const char *format, ...)
   va_end(args);
 }
 
-
+/*
+ * 用于解析并且处理命令行参数
+ * */
 static void get_options(int argc,char **argv)
 {
   int ho_error;

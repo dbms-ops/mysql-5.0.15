@@ -330,7 +330,7 @@ int get_defaults_options(int argc, char **argv,
 
 /*
   Read options from configurations files
-
+  从配置文件中读取选项
   SYNOPSIS
     load_defaults()
     conf_file			Basename for configuration file to search for.

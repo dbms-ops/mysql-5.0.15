@@ -368,12 +368,12 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#include <direct.h>
+#include <sys/stat.h>
 #include <fcntl.h>
-#include <io.h>
+#include <sys/io.h>
 #include <limits.h>
 #include <memory.h>
-#include <process.h>
+#include <cc++/process.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
