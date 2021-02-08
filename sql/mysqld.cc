@@ -4870,10 +4870,29 @@ Disable with --skip-innodb-doublewrite.", (gptr*) &innobase_use_doublewrite,
    (gptr*) &innobase_fast_shutdown,
    (gptr*) &innobase_fast_shutdown, 0, GET_ULONG, OPT_ARG, 1, 0,
    IF_NETWARE(1,2), 0, 0, 0},
+   /*
+    * innodb_file_per_table 新表将自己的索引和树邨存储在的单独的 ibd 文件中。InnoDB 在全局表空间中，保存了大量的元信息
+    * 相关文件：
+    * 1、innobase/dict/dict0crea.c dict_build_table_def_step()，以及 srv_file_per_table 变量
+    *
+    * */
   {"innodb_file_per_table", OPT_INNODB_FILE_PER_TABLE,
    "Stores each InnoDB table to an .ibd file in the database dir.",
    (gptr*) &innobase_file_per_table,
    (gptr*) &innobase_file_per_table, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+   /*
+    * InnoDB 在启动时维护一个进行恢复的事务日志。无论是否发生崩溃，都会尝试进行恢复
+    * 在发生崩溃时，事务中的挂起的事务将重新处理。如果没有发生崩溃，日志中不会出现崩溃的事务，不需要执行任何操作；
+    * 0： 日志缓冲区的文件以每秒钟一次的频率被写入到文件中，并且对于文件描述符执行磁盘刷新操作，但是不会再事务执行期间进行任何处理
+    * 1： 每次执行事务时，都会将日志缓冲区写入日志文件，并且对于文件描述符进行磁盘刷盘操作
+    * 2： 每次执行事务时，都会将日志缓冲区写入文件描述符，但是并不对文件描述符执行磁盘刷新操作，每秒钟刷新一次文件描述符
+    * 注意： 由于过程进度的原因，可能会在需要进行刷新时，无法获得CPU，无法保证百分百每秒钟刷新一次，但是会进行尝试，当服务器获得CPU后，
+    *   会立即检查从上次刷新开始时是否经过 1 s，如果时间已到，则立即执行刷新
+    * 相关文件：
+    *   1、innobase/srv/srv0srv.c srv_master_thread()、以及函数 log_buffer_flush_to_disk() 函数调用和 innobase/trx/trx0trx.c
+    *   中的 trx_commit_off_kernel() 【log_write_up_to()函数调用】
+    *
+    * */
   {"innodb_flush_log_at_trx_commit", OPT_INNODB_FLUSH_LOG_AT_TRX_COMMIT,
    "Set to 0 (write and flush once per second), 1 (write and flush at each commit) or 2 (write at commit, flush once per second).",
    (gptr*) &innobase_flush_log_at_trx_commit,
@@ -5469,7 +5488,16 @@ log and this option does nothing anymore.",
     REQUIRED_ARG, 20, 0, 1000, 0, 1, 0},
 
     /*
-     * MyISAM 表支持纯文本键，
+     * MyISAM 表支持纯文本键,允许存储引擎通过字符串中间的记录快速查找记录；
+     * 通常在进行文本查找时，为了提高索引的质量，通常有一些常用词需要被忽略。这些词称为停止词
+     * 文本索引的相关文件：
+     *  myisam/ft_boolean_search.c
+     *  myisam/ft_eval.c
+     *  myisam/ft_parser.c
+     *  myisam/ft_static.c
+     *  myisam/ft_stem.c
+     *  myisam/ft_stopwords.c
+     *  myisam/ft_update.c
      * */
 
     { "ft_stopword_file", OPT_FT_STOPWORD_FILE,
@@ -5496,6 +5524,14 @@ log and this option does nothing anymore.",
    "If Windows AWE is used, the size of InnoDB buffer pool allocated from the AWE memory.",
    (gptr*) &innobase_buffer_pool_awe_mem_mb, (gptr*) &innobase_buffer_pool_awe_mem_mb, 0,
    GET_LONG, REQUIRED_ARG, 0, 0, 63000, 0, 1, 0},
+   /*
+    * 用于控制使用多少内存对于InnoDB表数据和索引进行高速缓存。MyISAM 仅仅对于键进行高速缓存，
+    * InnoDB 对于自身所有的数据进行高速缓存；
+    * InnoDB 缓存冲相关文件：
+    *   1、innobase/buf.buf0buf.c： buf_pool_init()、buf_page_create()、buf_page_get_gen()
+    *   2、innobase/include/buf0buf.h的 buf_page_get_gen()
+    *
+    * */
   {"innodb_buffer_pool_size", OPT_INNODB_BUFFER_POOL_SIZE,
    "The size of the memory buffer InnoDB uses to cache data and indexes of its tables.",
    (gptr*) &innobase_buffer_pool_size, (gptr*) &innobase_buffer_pool_size, 0,
@@ -5510,10 +5546,33 @@ log and this option does nothing anymore.",
    "Number of file I/O threads in InnoDB.", (gptr*) &innobase_file_io_threads,
    (gptr*) &innobase_file_io_threads, 0, GET_LONG, REQUIRED_ARG, 4, 4, 64, 0,
    1, 0},
+   /*
+    * InnoDB 尝试恢复丢失数据的难度。
+    * 0： 表示不超出标准恢复算法
+    * 6： 尽最大可能运行数据库，努力运行查询，但是不会导致崩溃
+    * 选项大于 0 时，不允许运行更新数据库的查询，希望用户转储包含无用数据的表格，重新创建一张表，并且填写数据
+    * 需要了解的文件：
+    * 1、innobase/buf/buf0buf.c
+    * 2、innobase/dict/dict0dict.c
+    * 3、innobase/fil/fil0fil.c
+    * 4、innobase/ibuf/ibuf0ibuf.c
+    * 5、innobase/log/log0recv.c
+    * 6、innobase/row/row0mysql.c
+    * 7、innobase/row/row0sel.c
+    * 8、innobase/srv/srv0srv.c
+    * 9、innobase/srv/srv0start.c
+    * 10、innobase/trx/trx0sys.c
+    * 11、innobase/trx/trx0undo.c
+    *
+    * */
   {"innodb_force_recovery", OPT_INNODB_FORCE_RECOVERY,
    "Helps to save your data in case the disk image of the database becomes corrupt.",
    (gptr*) &innobase_force_recovery, (gptr*) &innobase_force_recovery, 0,
    GET_LONG, REQUIRED_ARG, 0, 0, 6, 0, 1, 0},
+   /*
+    * 死锁检测线程： innobase/srv0srv.c 中的 srv_lock_timeout_and_monitor_thread() 中实现 【重点了解下】
+    *
+    * */
   {"innodb_lock_wait_timeout", OPT_INNODB_LOCK_WAIT_TIMEOUT,
    "Timeout in seconds an InnoDB transaction may wait for a lock before being rolled back.",
    (gptr*) &innobase_lock_wait_timeout, (gptr*) &innobase_lock_wait_timeout,

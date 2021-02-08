@@ -70,6 +70,9 @@ FT_INFO *ft_init_search(uint flags, void *info, uint keynr,
 }
 
 const char *ft_stopword_file = 0;
+/*
+ * 文本索引的停止词列表，如果修改停止词列表，有必要为现有的表建立索引，可以通过 REPAIR RABLE tbl_name QUICK
+ * */
 const char *ft_precompiled_stopwords[] = {
 
 #ifdef COMPILE_STOPWORDS_IN
