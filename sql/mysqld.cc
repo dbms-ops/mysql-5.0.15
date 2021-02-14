@@ -557,7 +557,7 @@ pthread_key(THD*, THR_THD);
  * LOCK_delayed_insert：保护 I_LIST<delayed_insert delayed_threads> 是一个延迟插入线程列表
  * LOCK_delayed_status：保护对延迟插入操作进行汇总的状态变量
  * LOCK_error_log：保护错误日志写入
- *
+ * 使用互斥体实现
  * */
 pthread_mutex_t LOCK_mysql_create_db, LOCK_Acl, LOCK_open, LOCK_thread_count,
         LOCK_mapped_file, LOCK_status, LOCK_global_read_lock,
@@ -569,6 +569,15 @@ pthread_mutex_t LOCK_mysql_create_db, LOCK_Acl, LOCK_open, LOCK_thread_count,
 #ifdef HAVE_OPENSSL
 pthread_mutex_t LOCK_des_key_file;
 #endif
+/*
+ * 使用读写锁实现
+ * LOCK_grant：保护执行访问控制的变量和数据结构
+ * LOCK_sys_init_connect: 保护系统描述符变量：sys_init_connect，防止在他所存储的命令时对其进行修改；
+ *  sys_init_connect 系统变量描述符就会存储要执行的命令
+ * LOCK_sys_init_slave：保护系统变量 sys_init_slave 防止在执行他所存储的命令时，对其进行修改。每当一个从服务器按照 init_slave
+ *  配置设置的规定连接主服务器时，sys_init_slave 系统描述符就会存储要在主服务器上执行的命令
+ *
+ * */
 rw_lock_t	LOCK_grant, LOCK_sys_init_connect, LOCK_sys_init_slave;
 /*
  * COND_refresh: 用于向正在等待的线程发出信号：已经以某种方式改变了表状态
