@@ -545,9 +545,12 @@ SHOW_COMP_OPTION have_blackhole_db;
 pthread_key(MEM_ROOT**,THR_MALLOC);
 pthread_key(THD*, THR_THD);
 /*
+ * LOCK_Acl：已经初始化，但是没有在代码中使用
  * LOCK_open：锁变量，用于保护在表告诉缓存上操作的重要区域，以及执行其他与打开表相关的操作
- * LOCK_thread_count：锁变量，用于保护创建活着杀出线程的重要区域
+ * LOCK_thread_count：锁变量，用于保护创建线程的重要区域
  * LOCK_status：锁变量，用于保护读取或修改状态变量的重要区域，可通过 SHOW STATUS 进行查看
+ * LOCK_active_mi：用于保护 active_mi 指针，该指针指向正在工作的从服务器描述符
+ * LOCK_bytes_received：保护 bytes_received 状态变量，该变量对服务器
  * */
 pthread_mutex_t LOCK_mysql_create_db, LOCK_Acl, LOCK_open, LOCK_thread_count,
         LOCK_mapped_file, LOCK_status, LOCK_global_read_lock,
