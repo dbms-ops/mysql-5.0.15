@@ -313,7 +313,13 @@ static my_bool opt_bdb, opt_isam, opt_ndbcluster;
 static my_bool opt_short_log_format= 0;
 static my_bool opt_log_queries_not_using_indexes= 0;
 static uint kill_cached_threads, wake_thread;
+/*
+ * thread_created:追踪服务器启动后生成的线程的数量
+ * */
 static ulong killed_threads, thread_created;
+/*
+ * max_used_connections: 追踪服务器启动后所经历的同步连接的最大数目；show status的 max_used_connections
+ * */
 static ulong max_used_connections;
 static ulong my_bind_addr;			/* the address we bind to */
 static volatile ulong cached_thread_count= 0;
@@ -388,10 +394,18 @@ uint mysqld_port, test_flags, select_errors, dropping_tables, ha_open_options;
 uint delay_key_write_options, protocol_version;
 uint lower_case_table_names;
 uint tc_heuristic_recover= 0;
+/*
+ * thread_running 用于追踪正在相应查询的线程数目；
+ * 参考：
+ *      sql/sql_parse.cc::dispatch_command()，在线程的开始处 + 1，在线程的结束处 -1
+ * thread_count: 追踪当前存在的线程数量
+ * */
 uint volatile thread_count, thread_running;
 ulonglong thd_startup_options;
 /*
  * server_id: 每个参与复制的服务器都要有一个却别于复制点的独特的ID。本变量包含此服务器的独特的 ID。由 server-id 配置参数设置
+ * thread_cache_size: 状态变量，用于指定线程高速缓存中的线程的最大数目，设置为 0，表示禁用线程缓存
+ *      
  * */
 ulong back_log, connect_timeout, concurrency, server_id;
 ulong table_cache_size, thread_stack, what_to_log;
@@ -410,6 +424,9 @@ ulong query_cache_size=0;
  *
  * */
 ulong refresh_version, flush_version;	/* Increments on each reload */
+/*
+ * query_id: 用于生成唯一的查询ID编号。每当讲一个查询发送给服务器，就会分配该变量，当前值 +1
+ * */
 query_id_t query_id;
 /*
  * aborted_threads: 追踪自动成功建立后又异常终止的连接的数目。数值在 SHOW STATUS 下的 aborted_threads 显示
@@ -428,7 +445,7 @@ ulong binlog_cache_use= 0, binlog_cache_disk_use= 0;
 ulong max_connections, max_connect_errors;
 uint  max_user_connections= 0;
 /*
- * 用于位新创建的线程分配唯一ID数值计数器。每当创建一个新线程，就分配 thread_id 的当前数值，然后数值递增 1
+ * thread_id:用于位新创建的线程分配唯一ID数值计数器。每当创建一个新线程，就分配 thread_id 的当前数值，然后数值递增 1
  * */
 ulong thread_id=1L,current_pid;
 ulong slow_launch_threads = 0, sync_binlog_period;
@@ -3815,8 +3832,15 @@ static void create_new_thread(THD *thd)
   else
 #endif
   {
+      /*
+       * 如果缓存的线程数量大于唤醒的进程数量；
+       * cached_thread_count > wake_thread：保证存在睡眠线程，否则永远不会调用该函数
+       * */
     if (cached_thread_count > wake_thread)
     {
+        /*
+         * 唤醒当前不处理任何请求的线程
+         * */
       start_cached_thread(thd);
     }
     else
@@ -3829,6 +3853,9 @@ static void create_new_thread(THD *thd)
         max_used_connections=thread_count-delayed_insert_threads;
       DBUG_PRINT("info",(("creating thread %d"), thd->thread_id));
       thd->connect_time = time(NULL);
+      /*
+       *
+       * */
       if ((error=pthread_create(&thd->real_id,&connection_attrib,
 				handle_one_connection,
 				(void*) thd)))
@@ -3877,7 +3904,11 @@ inline void kill_broken_server()
 #define MAYBE_BROKEN_SYSCALL
 #endif
 
-	/* Handle new connections and spawn new process to handle them */
+	/*
+	 * Handle new connections and spawn new process to handle them
+	 * 对于查询请求进行分类，调用不同的函数处理不同的请求
+	 *
+	 * */
 
 #ifndef EMBEDDED_LIBRARY
 pthread_handler_t handle_connections_sockets(void *arg __attribute__((unused)))

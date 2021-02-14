@@ -1173,6 +1173,8 @@ extern bool opt_disable_networking, opt_skip_show_db;
 extern my_bool opt_character_set_client_handshake;
 /*
  * shutdown_in_progress: 在服务器关机时设置的一个标志。用于避免多次启动关机过程
+ * abort_loopL：
+ * grant_option：
  * */
 extern bool volatile abort_loop, shutdown_in_progress, grant_option;
 extern bool mysql_proc_table_exists;

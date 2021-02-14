@@ -1045,7 +1045,9 @@ void execute_init_command(THD *thd, sys_var_str *init_command_var,
   thd->net.vio= save_vio;
 }
 
-
+/*
+ *
+ * */
 pthread_handler_t handle_one_connection(void *arg)
 {
   THD *thd=(THD*) arg;
@@ -1135,7 +1137,9 @@ pthread_handler_t handle_one_connection(void *arg)
       thd->set_time();
       thd->init_for_queries();
     }
-
+    /*
+     * 循环退出的条件：网络错误、系统管理员 kill 线程、客户端发出 COM_QUIT 命令、do_command 执行失败
+     * */
     while (!net->error && net->vio != 0 &&
            !(thd->killed == THD::KILL_CONNECTION))
     {
