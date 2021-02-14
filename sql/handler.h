@@ -15,7 +15,11 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 
-/* Definitions for parameters to do with handler-routines */
+/*
+ * Definitions for parameters to do with handler-routines
+ * 存储引擎接口模块；接口实现了一些常见的操作：打开和关闭表、连续扫描记录、按照键值检索记录，存储与删除记录
+ *
+ * */
 
 #ifdef USE_PRAGMA_INTERFACE
 #pragma interface			/* gcc class implementation */
@@ -484,6 +488,9 @@ typedef struct st_handler_buffer
 class handler :public Sql_alloc
 {
  protected:
+    /*
+     * 与给定 handler 实例相关的表的描述符
+     * */
   struct st_table *table;		/* The table definition */
 
   virtual int index_init(uint idx) { active_index=idx; return 0; }
@@ -500,20 +507,75 @@ class handler :public Sql_alloc
 
 public:
   const handlerton *ht;                 /* storage engine of this handler */
-  byte *ref;				/* Pointer to current row */
-  byte *dupp_ref;			/* Pointer to dupp row */
-  ulonglong data_file_length;		/* Length off data file */
-  ulonglong max_data_file_length;	/* Length off data file */
+  /*
+   * Pointer to current row
+   * 存储当前记录参照的数值。记录值是给定的表的内部专用的记录描述符；
+   * MyISAM：在数据文件中为本域使用记录偏移量
+   * InnoDB：使用以特殊方式进行格式化的逐渐的数值
+   * Memory：使用一个指向记录起点指针，数值长度为：ref_length
+   *
+   * */
+  byte *ref;
+    /*
+     * Pointer to dupp row
+     * 用于存储在插入新纪录时导致唯一键冲突的记录的参照的附加寄存器
+     * */
+  byte *dupp_ref;
+  /*
+   * data_file_length：使用数据文件的存储引擎的数据文件的长度。不使用数据文件的引擎，
+   * 则通过在本变量中存储所有记录加上能插入新纪录的位置的总长度来临时适应结果；显示在 SHOW TABLE STATUS 的输出结果中
+   *
+   * */
+  ulonglong data_file_length;
+  /*
+   * 数据文件的最大可能长度；通过 data_file_length成员引用。出现在 show table status 的输出结果中
+   * */
+  ulonglong max_data_file_length;
+  /* 使用索引的引擎：索引文件的长度；
+   * 不使用索引的引擎：本表存储索引的内存或者磁盘的近似值
+   * */
   ulonglong index_file_length;
+  /*
+   * 索引文件的最大可能长度；仅支持 MyISAM
+   * */
   ulonglong max_index_file_length;
-  ulonglong delete_length;		/* Free bytes */
+  /*
+   * 已经分配，但是没有使用的字节的数量。
+   * MyISAM：被标记已经删除的记录占据的空间的大小
+   * */
+  ulonglong delete_length;
+  /*
+   * 在下一次插入时将分配给自动累加列的数值【insert id】
+   * 可以在表创建时使用 AUTO_INCREMENT 从句设置该数值，或者使用 alter table
+   * */
   ulonglong auto_increment_value;
-  ha_rows records;			/* Records in table */
-  ha_rows deleted;			/* Deleted records */
+  /*
+   * 表中记录的数目；InnoDB 仅仅提供预估值
+   * */
+  ha_rows records;
+  /*
+   * 表中被标记为已删除的记录的数目
+   * */
+  ha_rows deleted;
+  /*
+   * 与MyISAM表的 RAID 特性相关
+   * */
   ulong raid_chunksize;
-  ulong mean_rec_length;		/* physical reclength */
-  time_t create_time;			/* When table was created */
+  /*
+   * 记录的平均长度：出现在 show table status 中
+   * */
+  ulong mean_rec_length;
+  /*
+   * 表的创建时间
+   * */
+  time_t create_time;
+  /*
+   * 上次使用 CHECK TABLE 检查表的时间；出现在 SHOW TABLE STATUS 中
+   * */
   time_t check_time;
+  /*
+   * 上次更新表的时间；出现在 show tables status 中
+   * */
   time_t update_time;
 
   /* The following are for read_multi_range */
@@ -523,21 +585,68 @@ public:
   HANDLER_BUFFER *multi_range_buffer;
 
   /* The following are for read_range() */
+  /*
+   * save_end_range：handler::read_range_first(): 成员方法中使用的成员变量
+   * end_range: 在大量与键范围的数值读取记录有关的成员方法中使用的存储变量
+   * */
   key_range save_end_range, *end_range;
+  /*
+   * range_key_part：在 read_range_first()成员方法中使用的存储变量
+   * */
   KEY_PART_INFO *range_key_part;
+  /*
+   * read_range_first()与compare_key()成员方法中使用的存储变量。如果键的实际值被证明等于与之进行比较的数值，
+   * 则包含compare_key()应返回的结果
+   * */
   int key_compare_result_on_equal;
+  /* 在 read_range_first() 和 read_range_next() 成方法中使用的一个存储变量
+   * */
   bool eq_range;
 
+  /*
+   * errkey: 包含发生错误的最后一个键的数目。错误往往是尝试创建一个唯一键的重复键的数值
+   *
+   * */
   uint errkey;				/* Last dup key */
+  /*
+   * sortkey: 键编号，根据此编号对记录进行物理排序。如果不存在这样的键，则设置为 255
+   * key_used_on_scan：最后用于扫描记录的键编号
+   *
+   * */
   uint sortkey, key_used_on_scan;
+  /*
+   * active_index：当前所选择的键编号，如果没有选择任何键，则设置为 MAX_KEY
+   * */
   uint active_index;
-  /* Length of ref (1-8 or the clustered key length) */
+  /*
+   * 存储在 ref 成员中的数值的长度
+   * */
   uint ref_length;
-  uint block_size;			/* index block size */
+  /* 用于该表的键块的尺寸
+   * */
+  uint block_size;
+  /*
+   * raid_type：与 MyISAM 表的 RAID 特性有关
+   * raid_chunks：与MyISAM 表的 RAID 特性有关
+   * */
   uint raid_type,raid_chunks;
+  /*
+   * 纯文本键操作描述符
+   * */
   FT_INFO *ft_handler;
+  /*
+   * 将 handler 对象初始化为读取一个键，还是扫描表，或者什么都不做；
+   * 调用 ha_init_index()将本数值设置为INDEX，调用ha_init_rnd()将数值设置为RAND()
+   * 将数值清0，并且复位为NONE，则分别由ha_end_index()和ha_end_rnd()完成
+   * */
   enum {NONE=0, INDEX, RND} inited;
+  /*
+   * 由update_auto_increment()设置，指出上次操作是否导致自动递增列的数值发生了变化
+   * */
   bool  auto_increment_column_changed;
+  /*
+   * 由 MEMORY handler 设置，指出在服务器启动期间内存表已清空。为了正确进行某些复制记录需要本信息
+   * */
   bool implicit_emptied;                /* Can be !=0 only if HEAP */
   const COND *pushed_cond;
 
@@ -558,13 +667,32 @@ public:
   virtual void print_error(int error, myf errflag);
   virtual bool get_error_message(int error, String *buf);
   uint get_dup_key(int error);
+  /*
+   * change_table_ptr：将 table 成员设置为有参数提供的数值
+   * */
   void change_table_ptr(TABLE *table_arg) { table=table_arg; }
   virtual double scan_time()
     { return ulonglong2double(data_file_length) / IO_SIZE + 2; }
+    /*
+     * 返回一个块读取操作的数目，该操作将使用键编号index从范围的ranges数目中读取行的 rows 数目
+     * */
   virtual double read_time(uint index, uint ranges, ha_rows rows)
  { return rows2double(ranges+rows); }
+ /*
+  * 通常 MySQL 优化器扫描表时不使用键，因为一个纯文本数据文件的全扫描要比遍历一个B树索引更快。
+  * 但是有时存储引擎可能会按照下列方式组织数据：
+  * 在全表扫描时，遍历一个键更有利。这种方法返回一个键映射，对于可以扫描表的键其位被置位
+  *
+  * */
   virtual const key_map *keys_to_use_for_scanning() { return &key_map_empty; }
+  /*
+   * 如果存储引擎支持事务返回 True。默认的方法是返回 False
+   * */
   virtual bool has_transactions(){ return 0;}
+  /*
+   * sql/table.cc 中的openfrm()分配一个临时记录缓冲区，在表描述符中存放当前记录。缓冲区的大小是记录的逻辑长度，
+   * 在加上因存储引擎的特定原因而可能加上的一些额外保留的长度
+   * */
   virtual uint extra_rec_buf_length() { return 0; }
   
   /*
@@ -572,6 +700,8 @@ public:
     (max. of how many records one will retrieve when doing a full table scan)
     If upper bound is not known, HA_POS_ERROR should be returned as a max
     possible upper bound.
+
+    返回可以在扫描表时检查的记录的最大数目
   */
   virtual ha_rows estimate_rows_upper_bound()
   { return records+EXTRA_RECORDS; }
@@ -582,8 +712,14 @@ public:
   */
   virtual enum row_type get_row_type() const { return ROW_TYPE_NOT_USED; }
 
+  /*
+   * index_type：返回一个由参数指定的索引的文本说明的指针
+   * */
   virtual const char *index_type(uint key_number) { DBUG_ASSERT(0); return "";}
 
+  /*
+   * 初始化存储引擎，一边在参数指定的键上执行操作。成功返回 0，失败返回一个非 0 值
+   * */
   int ha_index_init(uint idx)
   {
     DBUG_ENTER("ha_index_init");
@@ -591,6 +727,9 @@ public:
     inited=INDEX;
     DBUG_RETURN(index_init(idx));
   }
+  /*
+   * 在存储引擎中执行键操作后清 0
+   * */
   int ha_index_end()
   {
     DBUG_ENTER("ha_index_end");
@@ -612,22 +751,58 @@ public:
     inited=NONE;
     DBUG_RETURN(rnd_end());
   }
-  /* this is necessary in many places, e.g. in HANDLER command */
+  /*
+   * this is necessary in many places, e.g. in HANDLER command
+   * 根据先前执行的初始化调用ha_index_end()或者ha_rnd_end(),成功发挥0，失败返回一个 非 0 值
+   *
+   * */
   int ha_index_or_rnd_end()
   {
     return inited == INDEX ? ha_index_end() : inited == RND ? ha_rnd_end() : 0;
   }
+  /*
+   * 返回当前所选择的索引的编号
+   * */
   uint get_index(void) const { return active_index; }
+  /*
+   * 执行打开表的真正操作
+   * name：frm 文件的路径；
+   *
+   * */
   virtual int open(const char *name, int mode, uint test_if_locked)=0;
+  /*
+   * 关闭表，执行必要的清0；
+   * 必须在 open()之后调用。成功时返回0，失败时返回一个非0的错误代码
+   * 本方法为纯虚拟方法，必须在一个子类中实现
+   * */
   virtual int close(void)=0;
+  /*
+   * 在表中插入参数所指的记录。
+   * 在处理 INSERT 查询时，本地调用是所有存储引擎共享的执行堆栈的底部
+   * 本方法的默认实现方法是 HA_ERR_WRONG_COMMAND,执行失败，会导致所有的查询返回一个错误
+   *
+   * */
   virtual int write_row(byte * buf) { return  HA_ERR_WRONG_COMMAND; }
+  /*
+   * 更新由 old_data所指的记录，让 new_data指向内容。在处理 UPDATE 查询时，本调用是所有存储引擎共享的执行堆栈的底部
+   * 本方法的默认实现方法是返回 HA_WRONG_COMMAND
+   * 执行失败将导致所有的 UPDATE 查询返回一个错误
+   * */
   virtual int update_row(const byte * old_data, byte * new_data)
    { return  HA_ERR_WRONG_COMMAND; }
+   /*
+    * 删除表中由参数所指的记录。在处理 DELETE 查询时，本调用是所有存储引擎共享的执行堆栈的底部
+    * */
   virtual int delete_row(const byte * buf)
    { return  HA_ERR_WRONG_COMMAND; }
+   /*
+    * 根据 key 和 key_len的值，将光标放在第一个键上，如果找到匹配则将记录读入 buf。根据由 find_flag 指定的查找方法进行匹配。
+    * 操作由当前激活的索引完成
+    * */
   virtual int index_read(byte * buf, const byte * key,
 			 uint key_len, enum ha_rkey_function find_flag)
    { return  HA_ERR_WRONG_COMMAND; }
+   /**/
   virtual int index_read_idx(byte * buf, uint index, const byte * key,
 			     uint key_len, enum ha_rkey_function find_flag);
   virtual int index_next(byte * buf)

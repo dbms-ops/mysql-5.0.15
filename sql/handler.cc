@@ -1357,7 +1357,11 @@ int ha_delete_table(THD *thd, enum db_type table_type, const char *path,
 
 	/* Open database-handler. Try O_RDONLY if can't open as O_RDWR */
 	/* Don't wait for locks if not HA_OPEN_WAIT_IF_LOCKED is set */
-
+/*
+ * ha_open：打开由 name 参数指定的表。该参数是通往包含表定义的 .frm 文件的路径；
+ * 其余参数传递给 open，由特定存储引擎进行解释，成功时返回0，失败时返回一个 非 0 值
+ *
+ * */
 int handler::ha_open(const char *name, int mode, int test_if_locked)
 {
   int error;
@@ -1505,7 +1509,9 @@ next_insert_id(ulonglong nr,struct system_variables *variables)
 
     thd->next_insert_id is cleared after it's been used for a statement.
 */
-
+/*
+ * 决定要插入的自动递增值，并将其存储在自动递加域描述符中
+ * */
 bool handler::update_auto_increment()
 {
   ulonglong nr;
@@ -1645,6 +1651,10 @@ ulonglong handler::get_auto_increment()
    the 'table' structure:
      table->s->path
      table->alias
+  将错误信息打印到错误日志中；
+  本方法有一个对付大多数错误的一般实现方法。如果遇到一个未知的错误代码，则通过 get_error_message() 查找消息。
+  error 为错误代码。
+  errflag 参数从 mysys/my_error.c 传递给 my_error(),通常为 0
 */
 
 void handler::print_error(int error, myf errflag)
@@ -1814,13 +1824,26 @@ void handler::print_error(int error, myf errflag)
    Returns true if this is a temporary error
  */
 
+/*
+ * 如果 print_error()不知道存储引擎特定错误消息，则定位该消息
+ * error：错误代码
+ * buf：是存储结果消息的 String 缓冲区的地址
+ *  如果存储引擎中的消息时临时的，返回 True，否则返回 False
+ *
+ * */
+
 bool handler::get_error_message(int error, String* buf)
 {
   return FALSE;
 }
 
 
-/* Return key if error because of duplicated keys */
+/*
+ * Return key if error because of duplicated keys
+ * 返回与上一个重复键错误有关的键的编号
+ * 如果参数包含一个未与一个重复键错误相连的错误代码
+ *
+ * */
 
 uint handler::get_dup_key(int error)
 {

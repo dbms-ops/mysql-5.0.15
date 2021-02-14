@@ -61,6 +61,9 @@ typedef my_bool ALARM;
 #define thr_alarm(A,B,C) ((*(A)=1)-1)
 /* The following should maybe be (*(A)) */
 #define thr_got_alarm(A) 0
+/*
+ * 初始化 thr_alarm 和 end_thr_alarm 都是用报警描述符参数
+ * */
 #define init_thr_alarm(A)
 #define thr_alarm_kill(A)
 #define resize_thr_alarm(N)

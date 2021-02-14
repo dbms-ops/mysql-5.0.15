@@ -68,7 +68,9 @@ static int compare_ulong(void *not_used __attribute__((unused)),
   ulong a=*((ulong*) a_ptr),b= *((ulong*) b_ptr);
   return (a < b) ? -1  : (a == b) ? 0 : 1;
 }
-
+/*
+ * init_thr_alarm: 告警描述参数初始化
+ * */
 void init_thr_alarm(uint max_alarms)
 {
   sigset_t s;
@@ -397,6 +399,9 @@ static sig_handler process_alarm_part2(int sig __attribute__((unused)))
     - All new alarms will be rescheduled to one second
 */
 
+/*
+ * end_thr_alarm:
+ * */
 void end_thr_alarm(my_bool free_structures)
 {
   DBUG_ENTER("end_thr_alarm");
