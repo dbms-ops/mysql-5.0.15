@@ -332,7 +332,10 @@ static char *default_collation_name;
 static char mysql_data_home_buff[2];
 static struct passwd *user_info;
 static I_List<THD> thread_cache;
-
+/*
+ * COND_flush_thread_cache: 信号变量，本信号由 sql/mysqld.cc 中的 end_thread() 在清除线程高速缓存中发出，向 flush_thread_cache
+ * 传达一个线程已经退出，唤醒flush_thread_cache() 检查是否有足够多的线程需要终止
+ * */
 static pthread_cond_t COND_thread_cache, COND_flush_thread_cache;
 
 #ifdef HAVE_BERKELEY_DB

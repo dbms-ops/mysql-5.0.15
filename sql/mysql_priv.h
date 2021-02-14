@@ -1230,6 +1230,11 @@ extern pthread_mutex_t LOCK_mysql_create_db,LOCK_Acl,LOCK_open,
 extern pthread_mutex_t LOCK_des_key_file;
 #endif
 extern rw_lock_t LOCK_grant, LOCK_sys_init_connect, LOCK_sys_init_slave;
+/*
+ * COND_manager：本信号用于唤醒线程管理器线程 sql/sql_manager.cc，并且执行预定的一组维护任务：清理日志、刷新表；
+ * 与 LOCK_manager 同时使用
+ *
+ * */
 extern pthread_cond_t COND_refresh, COND_thread_count, COND_manager;
 extern pthread_attr_t connection_attrib;
 extern I_List<THD> threads;
