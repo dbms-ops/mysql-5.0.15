@@ -1210,6 +1210,15 @@ extern FILE *bootstrap_file;
 extern int bootstrap_error;
 extern FILE *stderror_file;
 extern pthread_key(MEM_ROOT**,THR_MALLOC);
+/*
+ * LOCK_manager:保护管理线程使用的数据结构，该结构负责顶起刷新表
+ * LOCK_mapped_file: 保护在带有内存映射文件的操作中使用的数据结构和变量
+ * LOCK_open: 保护与表高速缓存、打开和关闭表幽暗的数据结构和变量
+ * LOCK_status: 保护与 show status 输出结果中所显示的变量
+ * LOCK_thread_count：保护参与创建或破坏线程的变量和数据结构
+ * LOCK_uuid_generator:保护与UUID SQL 函数中使用的变量和数据结构
+ *
+ * */
 extern pthread_mutex_t LOCK_mysql_create_db,LOCK_Acl,LOCK_open,
        LOCK_thread_count,LOCK_mapped_file,LOCK_user_locks, LOCK_status,
        LOCK_error_log, LOCK_delayed_insert, LOCK_uuid_generator,

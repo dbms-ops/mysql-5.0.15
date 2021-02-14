@@ -551,6 +551,13 @@ pthread_key(THD*, THR_THD);
  * LOCK_status：锁变量，用于保护读取或修改状态变量的重要区域，可通过 SHOW STATUS 进行查看
  * LOCK_active_mi：用于保护 active_mi 指针，该指针指向正在工作的从服务器描述符
  * LOCK_bytes_received：保护 bytes_received 状态变量，该变量对服务器
+ * LOCK_bytes_sent: 保护 bytes_sent 变量，该变量用于追踪自服务器启动以来接收到的来自客户端的字节数量
+ * LOCK_crypt: 保护非线程安全的Unix C库调用
+ * LOCK_delayed_create：保护与处理延迟插入而创建的线程有关变量和结构。即使表被锁定，延迟插入也会立即返回客户端
+ * LOCK_delayed_insert：保护 I_LIST<delayed_insert delayed_threads> 是一个延迟插入线程列表
+ * LOCK_delayed_status：保护对延迟插入操作进行汇总的状态变量
+ * LOCK_error_log：保护错误日志写入
+ *
  * */
 pthread_mutex_t LOCK_mysql_create_db, LOCK_Acl, LOCK_open, LOCK_thread_count,
         LOCK_mapped_file, LOCK_status, LOCK_global_read_lock,
