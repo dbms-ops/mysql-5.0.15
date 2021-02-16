@@ -1610,7 +1610,11 @@ void handler::restore_auto_increment()
     thd->next_insert_id= thd->prev_insert_id;
 }
 
-
+/*
+ * 返回自动累加键的下一个数值
+ * 大多数存储引擎会重新实现这一种方法
+ *
+ * */
 ulonglong handler::get_auto_increment()
 {
   ulonglong nr;
@@ -2349,7 +2353,7 @@ int handler::read_multi_range_next(KEY_MULTI_RANGE **found_range_p)
 /*
   Read first row between two ranges.
   Store ranges for future calls to read_range_next
-
+  将由 start_key 和 end_key 变量指定的范围内的第一个记录读入 table-->record[0] 缓冲区。保存范围上下限并且提供给 read_range_next()
   SYNOPSIS
     read_range_first()
     start_key		Start key. Is 0 if no min range
@@ -2413,6 +2417,9 @@ int handler::read_range_first(const key_range *start_key,
     0			Found row
     HA_ERR_END_OF_FILE	No rows in range
     #			Error code
+
+   将当前范围中的下一个记录读入table-->record[0] 缓冲区。成功发挥0，失败则返回一个非0的错误代码
+
 */
 
 int handler::read_range_next()
@@ -2450,6 +2457,10 @@ int handler::read_range_next()
     0			Key is equal to range or 'range' == 0 (no range)
    -1			Key is less than range
     1			Key is larger than range
+   将当前记录的【在 table --> record[0]中】的键与由参数指定的键范围限值相比较
+   如果数值相同，或者说如果范围值为0则返回0
+   如果当前记录键小于范围限值则返回 -1
+   如果当前记录键大于范围限值则返回 1
 */
 
 int handler::compare_key(key_range *range)

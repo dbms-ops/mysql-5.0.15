@@ -802,18 +802,41 @@ public:
   virtual int index_read(byte * buf, const byte * key,
 			 uint key_len, enum ha_rkey_function find_flag)
    { return  HA_ERR_WRONG_COMMAND; }
-   /**/
+   /*
+    * 与 index_read() 相同，但首先激活由索引变量指定的键
+    * */
   virtual int index_read_idx(byte * buf, uint index, const byte * key,
 			     uint key_len, enum ha_rkey_function find_flag);
+  /*
+   * 从激活索引中将下一个记录读取到由参数指定的缓冲区中，然后激活的键光标前进一步。成功则返回0，失败返回非0 的错误代码
+   * */
   virtual int index_next(byte * buf)
    { return  HA_ERR_WRONG_COMMAND; }
+   /*
+    * 从激活索引中将前一个记录读取到由参数指定的缓冲区中，然后激活的键光标后退一步。成功返回0，失败返回非0值
+    * */
   virtual int index_prev(byte * buf)
    { return  HA_ERR_WRONG_COMMAND; }
+   /*
+    * 从激活的索引中将第一个记录读取到由参数指定的缓冲区中，然后将激活的键光标紧接着放在后面。成功返回0，失败返回非0的错误代码
+    * */
   virtual int index_first(byte * buf)
    { return  HA_ERR_WRONG_COMMAND; }
+   /*
+    * 从激活的索引中将最后一个记录读到的参数指定的缓冲区中，并在前面放入激活键指标。成功返回0，失败返回非0的错误代码
+    * */
   virtual int index_last(byte * buf)
    { return  HA_ERR_WRONG_COMMAND; }
+   /*
+    * 从当前激活的记录开始，读取与前一个读取记录具有相同键的记录，并放入由buf指向的缓冲区中
+    * 由于有些存储引擎不存储最后读取的键数值，则使用 key 和 key len参数提醒他们。成功时激活键光标前进，同时返回 0
+    * */
   virtual int index_next_same(byte *buf, const byte *key, uint keylen);
+  /*
+   * 将在上次键值与 key 和 key len 数值匹配过程中找到的记录读入 buf。然后将光标直接放在该记录的前面
+   * 成功返回 0，失败返回非0的错误代码
+   *
+   * */
   virtual int index_read_last(byte * buf, const byte * key, uint key_len)
    { return (my_errno=HA_ERR_WRONG_COMMAND); }
   virtual int read_multi_range_first(KEY_MULTI_RANGE **found_range_p,
@@ -823,36 +846,121 @@ public:
   virtual int read_range_first(const key_range *start_key,
                                const key_range *end_key,
                                bool eq_range, bool sorted);
+
   virtual int read_range_next();
+
   int compare_key(key_range *range);
+  /*
+   * 重新初始化纯文本键操作的存储引擎
+   * 当 MySQL 需要重复多次进行纯文本搜索时可以调用，目前仅对于 MyISAM 有意义
+   * */
   virtual int ft_init() { return HA_ERR_WRONG_COMMAND; }
   void ft_end() { ft_handler=NULL; }
+  /*
+   * 为一个搜索初始化纯文本引擎。目前仅仅对于MyISAM 有意义
+   * flags：指定搜索模式
+   * inx：索引编号
+   * key：用于提供搜索的键
+   * */
   virtual FT_INFO *ft_init_ext(uint flags, uint inx,String *key)
     { return NULL; }
+    /*
+     * 将有关当前激活纯文本键的下一个记录读入由变量指定的缓冲区中，仅仅对于MyISAM有效
+     *
+     * */
   virtual int ft_read(byte *buf) { return HA_ERR_WRONG_COMMAND; }
+  /*
+   * rnd_next：在连续扫描期间，将下一条记录读入由 buf 指向的缓冲区中，连续扫描光标前进
+   * 成功发挥 0，失败返回非 0 的错误代码
+   * */
   virtual int rnd_next(byte *buf)=0;
+  /*
+   * 将由 pos 指定的记录读取 buf
+   * pos：pos 的解释取决于存储引擎；MyISAM使用记录的数据文件偏移量；InnoDB 使用主键值
+   * 成功返回一个非 0 错误代码，纯虚拟方法，需要在具体的子类中实现
+   * */
   virtual int rnd_pos(byte * buf, byte *pos)=0;
+  /*
+   * 从表中检索一个任意选取的记录，并将它放入由 buf 参数指向的缓冲区
+   * primary_key：参数影响记录的选择方法
+   * 选择记录的两种方式：
+   *    1、扫描表并返回第一个未被标记为已删除的记录
+   *    2、选取键中带有 primary_key 参数数目的第一个记录
+   *
+   * 如果 primary_key 参数大于或等于 MAX_KEY，使用第一种方法；
+   * 否则使用第二种方法
+   * */
   virtual int read_first_row(byte *buf, uint primary_key);
   /*
     The following function is only needed for tables that may be temporary
     tables during joins
+
   */
+
+  /*
+   *  仅仅对于MyISAM 有意义，本方法是 rnd_pos 的别名
+   *  目前仅调用这个方法一次，执行调用的是在临时表上处理SELECT DISTINCT 时，删除结果集中的重复的代码
+   * */
   virtual int restart_rnd_next(byte *buf, byte *pos)
     { return HA_ERR_WRONG_COMMAND; }
+    /*
+     * 将当前记录重新读取 buf，如果改值大于或者等于0，则可能使用键编号 idx，成功返回0，失败返回非0错误代码
+     * 该方法没有被实现，也不会被调用
+     * */
   virtual int rnd_same(byte *buf, uint inx)
     { return HA_ERR_WRONG_COMMAND; }
+    /*
+     * 返回与键编号 idx 中的 min_key 和 max_key 锁限定的键值相匹配的记录的估计的数目
+     * 默认的实现方法是返回10。
+     * 如果返回一个伪值，则最坏的结果就是则优化器倾向于一个优化最差的数值，或根本不是用键
+     *
+     * */
   virtual ha_rows records_in_range(uint inx, key_range *min_key,
                                    key_range *max_key)
     { return (ha_rows) 10; }
+    /*
+     * 将唯一的参考值存储在 ref 成员的当前记录中。在 MyISAM 表中，该数值是记录在数据文件的位置
+     *
+     * */
   virtual void position(const byte *record)=0;
+  /*
+   * 根据参数的数值更新本对象的各种统计变量的数值
+   * 纯虚拟方法，必须在一个子类中实现
+   * */
   virtual void info(uint)=0;
+  /*
+   * 提示存储引擎使用一些特殊的优化
+   * */
   virtual int extra(enum ha_extra_function operation)
   { return 0; }
+  /*
+   * 类似于 extra()，但是允许调用函数将参数传送给锁请求的操作。
+   * 主要用于控制各种类型 IO的高速缓存的大小
+   * */
   virtual int extra_opt(enum ha_extra_function operation, ulong cache_size)
   { return extra(operation); }
+  /*
+   * handler::extra(HA_EXTRA_RESET)的封装器。释放由较早的extra()调用分配的资源，将存储引擎的操作模式重新设置为默认值
+   * */
   virtual int reset() { return extra(HA_EXTRA_RESET); }
+  /*
+   * MySQL 为语句中使用的每个表在语句起始处调用本方法一次
+   * 如果启用了外部锁定徐安祥，因而启用了选项的历史名称，MyISAM 仅通过操作系统锁定键文件
+   * 事务存储引擎将其作为挂钩，用于启动事务，并在必要时执行其他初始化
+   *
+   * 纯虚拟方法，需要在子类中进行实现
+   * */
   virtual int external_lock(THD *thd, int lock_type) { return 0; }
+  /*
+   * 在 upadte 或者 delete 期间为与 WHERE从句不匹配的各行而调用，以便于删除不必要的行锁定
+   * InnoDB 用于清除在半相同读模式下读取的行锁
+   *
+   * */
   virtual void unlock_row() {}
+  /*
+   * 在由 LOCK TABLES 发起的事务起始时的调用，让事务存储引擎有机会登记事务起点
+   * 成功返回0，失败返回非 0 错误代码
+   * */
   virtual int start_stmt(THD *thd, thr_lock_type lock_type) {return 0;}
   /*
     This is called to delete all rows in a table
@@ -860,8 +968,13 @@ public:
     return HA_ERR_WRONG_COMMAND and MySQL will delete the rows one
     by one.
   */
+  /*
+   * 立即从表中删除所有行。是一种可选的优化。如果不支持，则通过多次调用 delete_row() 来清除表
+   *
+   * */
   virtual int delete_all_rows()
   { return (my_errno=HA_ERR_WRONG_COMMAND); }
+
   virtual ulonglong get_auto_increment();
   virtual void restore_auto_increment();
 
@@ -877,6 +990,11 @@ public:
   virtual void update_create_info(HA_CREATE_INFO *create_info) {}
 
   /* admin commands - called from mysql_admin_table */
+  /*
+   * 检查表是否由结构性错误。在发出check table 时调用
+   * THD：当前线程描述符
+   * check_opt：指向描述符操作选项结构
+   * */
   virtual int check(THD* thd, HA_CHECK_OPT* check_opt)
   { return HA_ADMIN_NOT_IMPLEMENTED; }
   virtual int backup(THD* thd, HA_CHECK_OPT* check_opt)
@@ -885,33 +1003,109 @@ public:
     restore assumes .frm file must exist, and that generate_table() has been
     called; It will just copy the data file and run repair.
   */
+  /*
+   * 重新从 frm 和 数据文件创建索引文件，仅仅适用于 MyISAM
+   * 成功返回 0，失败返回非 0 值
+   * */
   virtual int restore(THD* thd, HA_CHECK_OPT* check_opt)
   { return HA_ADMIN_NOT_IMPLEMENTED; }
+  /*
+   * 修复破坏的表。在发出 REPAIR TABLE时调用。成功则返回 0，失败则返回返回一个非 0 错误代码
+   * */
   virtual int repair(THD* thd, HA_CHECK_OPT* check_opt)
   { return HA_ADMIN_NOT_IMPLEMENTED; }
+  /*
+   * 是一个典型的查询重新以优化的形式构造表结构，在发出 OPTIMIZE TABLE时调用，成功时则返回 0
+   *
+   * */
   virtual int optimize(THD* thd, HA_CHECK_OPT* check_opt)
   { return HA_ADMIN_NOT_IMPLEMENTED; }
+  /*
+   * 更有有优化器使用的索引统计。在发出 ANALYZE TABLE时调用
+   * 成功则返回0，失败返回一个非 0 错误代码
+   * */
   virtual int analyze(THD* thd, HA_CHECK_OPT* check_opt)
   { return HA_ADMIN_NOT_IMPLEMENTED; }
+  /*
+   * 将该表的键分配给在 check_opt 结构中指定的键高速缓存
+   * 在发出 CACHE INDEX 命令时调用
+   * 成功则返回 0，失败则返回一个非 0 错误代码
+   * */
   virtual int assign_to_keycache(THD* thd, HA_CHECK_OPT* check_opt)
   { return HA_ADMIN_NOT_IMPLEMENTED; }
+  /*
+   * 将本表的键装载到在check_opt结构中指定的高速缓存中
+   * 成功时返回 0，失败时则返回一个非 0 的错误的代码
+   * */
   virtual int preload_keys(THD* thd, HA_CHECK_OPT* check_opt)
   { return HA_ADMIN_NOT_IMPLEMENTED; }
   /* end of the list of admin commands */
 
+  /*
+   * 检查表是否被破坏及在必要时进行修复
+   * 成功时返回 0，出错时返回 1。默认实现方法为仅 返回 1
+   * */
   virtual bool check_and_repair(THD *thd) { return HA_ERR_WRONG_COMMAND; }
+  /*
+   * 以存储引擎专用的格式将表写入到 由 fd 指定的文件柄
+   * 如果fd 小于 0，则数据写入与 thd 相关的网络连接
+   * LOAD DATA FROM MASTER
+   * */
   virtual int dump(THD* thd, int fd = -1) { return HA_ERR_WRONG_COMMAND; }
+  /*
+   * 禁止在表中使用键
+   * 在发出 DISABLE KEYS 命令时调用，常常在一系列大型更新前使用【表锁】
+   * */
   virtual int disable_indexes(uint mode) { return HA_ERR_WRONG_COMMAND; }
+  /*
+   * 重新允许在表中使用键。在发出 ENABLE KEYS命令时调用
+   * */
   virtual int enable_indexes(uint mode) { return HA_ERR_WRONG_COMMAND; }
+  /*
+   * 如果已经禁用表中的索引，则返回 1，否则返回 0
+   * */
   virtual int indexes_are_disabled(void) {return 0;}
+  /*
+   * 提示存储引擎启用批量插入优化
+   * MySQL在表中插入大量行前调用
+   * MyISAM 优化批量插入的方法是：在内存中高速缓存键值，并且将他们按照键顺序插入到 B-树索引中。默认实现是不执行任何操作
+   * */
   virtual void start_bulk_insert(ha_rows rows) {}
+  /*
+   * 批量插入结束时调用
+   * 成功返回0，否则返回一个非0错误代码
+   * */
   virtual int end_bulk_insert() {return 0; }
+  /*
+   * InnoDB使用的方法是：用于执行为本表分配的表空间上的效率
+   * discard：准备从备份中导入表空间
+   * import：在将要存储的表空间文件复制到指定位置后，从备份中恢复数据
+   * ALTER TABLE ... DISCARD TABLESPACE 或者 ALTER TABLE ... IMPORT TABLESPACE时调用；
+   * 成功时返回0，失败则返回一个非0的错误代码
+   * */
   virtual int discard_or_import_tablespace(my_bool discard)
   {return HA_ERR_WRONG_COMMAND;}
+  /*
+   * 从参数指定的网络连接中读取表数据，并且按照下列的方式进行存储：
+   * 1、调用 repair() 足够使表进入一致状态
+   * */
   virtual int net_read_dump(NET* net) { return HA_ERR_WRONG_COMMAND; }
+  /*
+   * 在 SHOW TABLES中使用，用于在 comment 中列中显示有关表的额外的信息
+   * 返回一个指向包含经过更新的注释值的指针，如果返回一个与参数不同的数值，则调用函数会假定使用my_alloc()分配了新指针，并将在使用后通过my_free()释放
+   * InnoDB 是提供自实现的唯一引擎
+   * */
   virtual char *update_table_comment(const char * comment)
   { return (char*) comment;}
+  /*
+   * 将额外的特定存储引擎信息添加到由参数指定的 String 对象中
+   * 用于生成 SHOW CREATE TABLE 的输出结果，默认的实现方式是返回 0
+   * */
   virtual void append_create_info(String *packet) {}
+  /*
+   * 返回一个指向包含创建外键的 CREATE TABLE 语句部分的指针
+   * 用于SHOW CREATE TABLE的输出结果
+   * */
   virtual char* get_foreign_key_create_info()
   { return(NULL);}  /* gets foreign key create string from InnoDB */
   /* used in ALTER TABLE; 1 if changing storage engine is allowed */
@@ -919,61 +1113,181 @@ public:
   /* used in REPLACE; is > 0 if table is referred by a FOREIGN KEY */
   virtual int get_foreign_key_list(THD *thd, List<FOREIGN_KEY_INFO> *f_key_list)
   { return 0; }
+  /*
+   * 如果某些外键引用了与本对象有关的表则返回1，否则返回 0
+   * */
   virtual uint referenced_by_foreign_key() { return 0;}
+  /*
+   * 为后续HANLDER命令准备表。HANDLER命令提供了一个低层次接口
+   * 可通过 SQL 连接某些存储引擎操作，默认实现方法是不执行任何操作
+   *
+   * */
   virtual void init_table_handle_for_HANDLER()
   { return; }       /* prepare InnoDB for HANDLER */
+  /*
+   * 必要时释放由 get_foreign_key_create_info() 返回的指针
+   * 默认方法是不执行任何的操作
+   * */
   virtual void free_foreign_key_create_info(char* str) {}
   /* The following can be called without an open handler */
+  /*
+   * 返回一个指向包含存储引擎名称的字符串的指针。本方法是纯虚拟方法，必须在子类中实现
+   * */
   virtual const char *table_type() const =0;
+  /*
+   * 返回一个字符串指针数组，这些指针指向本存储引擎数据和键的文件的扩展名
+   * 数组的最后元素为 0
+   * */
   virtual const char **bas_ext() const =0;
+  /*
+   * 返回这些存储引擎能力的位掩码 在sql/handler.h 中进行定义
+   * */
   virtual ulong table_flags(void) const =0;
+  /*
+   * 返回由参数指定的键或者键组件的能力的位掩码
+   * */
   virtual ulong index_flags(uint idx, uint part, bool all_parts) const =0;
+  /*
+   * 返回一个给定键在创建或移除该键的位掩码
+   * 默认的实现方法是返回 DDL_SUPPORT，这意味着存储引擎支持给定定义的索引，但是无法将其添加到现有表中
+   * */
   virtual ulong index_ddl_flags(KEY *wanted_index) const
   { return (HA_DDL_SUPPORT); }
+  /*
+   * 在表中添加键组合
+   * table_arg：
+   * key_info：键定义数组的起点
+   * num_of_keys：表示数组的大小
+   * */
   virtual int add_index(TABLE *table_arg, KEY *key_info, uint num_of_keys)
   { return (HA_ERR_WRONG_COMMAND); }
+  /*
+   * 由参数指定的表中移除键。成功返回0，失败返回一个 非 0 错误代码
+   * */
   virtual int drop_index(TABLE *table_arg, uint *key_num, uint num_of_keys)
   { return (HA_ERR_WRONG_COMMAND); }
-
+  /*
+   * 返回最大可能的记录的长度
+   * 该限制要么是存储引擎支持，要么是核心代码限定
+   * */
   uint max_record_length() const
   { return min(HA_MAX_REC_LENGTH, max_supported_record_length()); }
+  /*
+   * 返回每个表最大可能的键的数目
+   * */
   uint max_keys() const
   { return min(MAX_KEY, max_supported_keys()); }
+  /*
+   * 返回一个键能包含的列后者列前缀的可能数目的最大值
+   * */
   uint max_key_parts() const
   { return min(MAX_REF_PARTS, max_supported_key_parts()); }
+  /*
+   * 返回可能键长度的最大值
+   * */
   uint max_key_length() const
   { return min(MAX_KEY_LENGTH, max_supported_key_length()); }
+  /*
+   * 返回可能的键组成部分长度的最大值
+   * */
   uint max_key_part_length() const
   { return min(MAX_KEY_LENGTH, max_supported_key_part_length()); }
 
+  /*
+   * 返回本存储引擎设置的记录长度限制值
+   * */
   virtual uint max_supported_record_length() const { return HA_MAX_REC_LENGTH; }
+  /*
+   * 返回本存储引擎设定的键数目的限制值
+   * */
   virtual uint max_supported_keys() const { return 0; }
+  /*
+   * 返回本存储引擎设定的键组成部分数目的限制值
+   * */
   virtual uint max_supported_key_parts() const { return MAX_REF_PARTS; }
+  /*
+   * 返回本存储引擎设定的键长度的限制值
+   * */
   virtual uint max_supported_key_length() const { return MAX_KEY_LENGTH; }
+  /*
+   * 返回本存储引擎设定的键组成部分长度限制值
+   * */
   virtual uint max_supported_key_part_length() const { return 255; }
+  /*
+   * 返回本存储引擎设定的键记录长度的下限值
+   *
+   * */
   virtual uint min_record_length(uint options) const { return 1; }
 
+  /*
+   * 本存储引擎固有的字节顺序
+   * 小尾返回为1；否则返回为 0
+   *
+   * */
   virtual bool low_byte_first() const { return 1; }
+  /*
+   * 返回本表的校验和；
+   * 默认返回值为 0
+   * */
   virtual uint checksum() const { return 0; }
+  /*
+   * 表崩溃则返回为 1
+   * 在CHECK TABLE 或者常规读/写操作发现问题时会出现这种情况，会将表标记为 已崩溃
+   * 成功执行 repair table 会删除此标记
+   *
+   * */
   virtual bool is_crashed() const  { return 0; }
+  /*
+   * 如果存储引擎支持自动修复损毁的表，返回1；
+   * 目前仅仅支持 MyISAM
+   * */
   virtual bool auto_repair() const { return 0; }
 
   /*
     default rename_table() and delete_table() rename/delete files with a
     given name and extensions from bas_ext()
   */
+  /*
+   * 将 from 指定路径的表，移动到 to 的路径中
+   * 参数是到达表定义文件的路径
+   * 默认实现方法是对所有由 bas_ext() 返沪的可能扩展名进行迭代，然后返回重新命名匹配文件
+   *
+   * */
   virtual int rename_table(const char *from, const char *to);
+  /*
+   * 删除由 name 指定的表
+   * 参数是到达表定义文件的路径
+   * 默认的实现方法是对所有由 bas_ext() 返回的可能扩展名进行迭代，然后删除匹配文件
+   * */
   virtual int delete_table(const char *name);
-  
+  /*
+   * 使用表描述符form和创建信息描述符info 创建由name指定的表
+   *
+   * */
   virtual int create(const char *name, TABLE *form, HA_CREATE_INFO *info)=0;
 
   /* lock_count() can be more than one if the table is a MERGE */
+  /*
+   * 返回存储本表的锁描述符时所需要的常规所得描述符块的数量
+   * 大多数情况下只需要一个表描述符块，但是 MERGE 表除外，MERGE要求每个原件表有一个块
+   * */
   virtual uint lock_count(void) const { return 1; }
+  /*
+   * 将与本表有关的所描述符的位置存储在 to 指定的地址中
+   * 其余参数则提供当前线程描述符的数值，并在存储引擎处于内部目的想法下，提供表类型
+   * 本方法主要目的是允许存储引擎在存储所之前修改锁
+   * 行层次锁定存储疫情用它来防止表锁管理其在表中放入过于多的锁
+   * */
   virtual THR_LOCK_DATA **store_lock(THD *thd,
 				     THR_LOCK_DATA **to,
 				     enum thr_lock_type lock_type)=0;
 
   /* Type of table for caching query */
+  /*
+   * 返回与查询高速缓存有关的位掩码，默认的实现方法是返回 HA_CREATE_TBL_NONTRANSACT，无论是否正在执行事务，都允许高速缓存
+   * HA_CREATE_TBL_NONTRANSACT 意味着查询高速缓存将就每个表询问存储引擎是否可进行高速缓存。存储引擎可以使用事务可见性规则进行决定
+   *
+   * */
   virtual uint8 table_cache_type() { return HA_CACHE_TBL_NONTRANSACT; }
   /* ask handler about permission to cache table when query is to be cached */
   virtual my_bool register_query_cache_table(THD *thd, char *table_key,
@@ -1021,7 +1335,10 @@ public:
    handler->extra(HA_EXTRA_RESET) call empties the condition stack.
    Calls to rnd_init/rnd_end, index_init/index_end etc do not affect the
    condition stack.
- */ 
+ */
+ /*
+  * 由能够过滤与 WHERE 从句的一个部分不匹配的记录的存储引擎使用
+  * */
  virtual const COND *cond_push(const COND *cond) { return cond; };
  /*
    Pop the top condition from the condition stack of the handler instance.
@@ -1029,6 +1346,9 @@ public:
      cond_pop()
      Pops the top if condition stack, if stack is not empty
  */
+ /*
+  * 将顶部条件从存储引擎条件对战的顶部删除
+  * */
  virtual void cond_pop() { return; };
 };
 
