@@ -314,26 +314,31 @@ typedef struct
 {
   /*
     storage engine name as it should be printed to a user
+    存储引擎的名称
   */
   const char *name;
 
   /*
-    Historical marker for if the engine is available of not 
+    Historical marker for if the engine is available of not
+    在 SHOW STORAGE ENGINES输出结果中恰当的输出Support列时需要用到
   */
   SHOW_COMP_OPTION state;
 
   /*
     A comment used by SHOW to describe an engine.
+    SHOW ENGINES 输出结构中的 Comment 列的数值
   */
   const char *comment;
 
   /*
     Historical number used for frm file to determine the correct storage engine.
     This is going away and new engines will just use "name" for this.
+    在.frm文件中使用，以确定相关表的存储引擎类型
   */
   enum db_type db_type;
   /* 
     Method that initizlizes a storage engine
+    初始化存储引擎的函数
   */
   bool (*init)();
 
@@ -345,6 +350,7 @@ typedef struct
       thd->ha_data[xxx_hton.slot]
 
    slot number is initialized by MySQL after xxx_init() is called.
+   由 MyISAM 内部使用，开始时应该设置为 0
    */
    uint slot;
    /*
@@ -355,6 +361,7 @@ typedef struct
      After xxx_init it is changed to be an offset to savepoint storage
      area and need not be used by storage engine.
      see binlog_hton and binlog_savepoint_set/rollback for an example.
+     包含到保存点存储区域的偏移量。开始时应设置位保存点结构的大小
    */
    uint savepoint_offset;
    /*
@@ -364,18 +371,24 @@ typedef struct
      thd->ha_data[xxx_hton.slot] is non-zero, so even if you don't need
      this storage area - set it to something, so that MySQL would know
      this storage engine was accessed in this connection
+     在连接关闭时执行特定存储引擎 清 0 的函数
    */
    int  (*close_connection)(THD *thd);
    /*
      sv points to an uninitialized storage area of requested size
      (see savepoint_offset description)
+     处理保存点的函数
    */
    int  (*savepoint_set)(THD *thd, void *sv);
    /*
      sv points to a storage area, that was earlier passed
      to the savepoint_set call
+     处理 ROLLBACK TO SAVEPOINT的函数
    */
    int  (*savepoint_rollback)(THD *thd, void *sv);
+   /*
+    * 处理 RELEASE SAVEPOINT 函数
+    * */
    int  (*savepoint_release)(THD *thd, void *sv);
    /*
      'all' is true if it's a real commit, that makes persistent changes
@@ -384,14 +397,41 @@ typedef struct
      NOTE 'all' is also false in auto-commit mode where 'end of statement'
      and 'real commit' mean the same event.
    */
+   /*
+    * 处理 COMMIT 函数
+    * */
    int  (*commit)(THD *thd, bool all);
+   /*
+    * 处理 ROLLBACK 函数
+    * */
    int  (*rollback)(THD *thd, bool all);
+   /*
+    * 处理 XA PREPARE 函数
+    * */
    int  (*prepare)(THD *thd, bool all);
+   /*
+    * 处理 XA RECOVER 函数
+    * */
    int  (*recover)(XID *xid_list, uint len);
+   /*
+    * 处理 XA COMMIT 函数
+    * */
    int  (*commit_by_xid)(XID *xid);
+   /*
+    * 处理 XA COMMIT 函数
+    * */
    int  (*rollback_by_xid)(XID *xid);
+   /*
+    * 打开一个光标的函数
+    * */
    void *(*create_cursor_read_view)();
+   /*
+    * 从光标读取的函数
+    * */
    void (*set_cursor_read_view)(void *);
+   /*
+    * 关闭一个光标的函数
+    * */
    void (*close_cursor_read_view)(void *);
    uint32 flags;                                /* global handler flags */
 } handlerton;
