@@ -14,6 +14,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
+
 /*
 Read and write locks for Posix threads. All tread must acquire
 all locks it needs through thr_multi_lock() to avoid dead-locks.
@@ -70,6 +71,19 @@ TL_WRITE_CONCURRENT_INSERT or one TL_WRITE_DELAYED lock at the same time as
 multiple read locks.
 
 */
+
+/*
+ * 锁的两种类型：
+ * 1、读锁
+ * 2、写锁
+ *
+ * 表锁管理器为每个表维持四个队列：
+ * 1、当前读锁队列：lock-->read
+ * 2、暂停读锁队列：lock-->read_wait
+ * 3、当前写锁队列：lock--> write
+ * 4、暂停写锁队列：lock-->write_wait
+ *
+ * */
 
 #if !defined(MAIN) && !defined(DBUG_OFF) && !defined(EXTRA_DEBUG)
 #define DBUG_OFF
@@ -381,7 +395,36 @@ static inline my_bool have_specific_lock(THR_LOCK_DATA *data,
   return 0;
 }
 
-
+/*
+ * 只要表上没有当前写锁，并且暂停写锁队列中没有较高优先级的写锁，就会得到读锁
+ * 如果能立即得到锁请求，则相应的锁描述符就会被放入当前的读锁队列
+ * 否则 锁请求进入暂停读锁队列，同时发出请求的线程令自己暂停以等待锁
+ *
+ * 所请求的读锁和暂停写锁根据下列规则进行优化：
+ *
+ * 1、除 TL_READ_HIGH_PRIPRITY 外，暂停写锁队列中的 TL_WRITE 锁优先于所有的读锁
+ * 2、TL_READ_HITH_PRIORITY 请求优先于任何暂停的写锁
+ * 3、暂停写锁队列中的所有 非 TL_WRITE 写锁比读锁的优先级更低
+ *
+ * 当前写锁的存在会导致发出请求的线程暂停自己，等待锁可供使用，下列情形除外：
+ * 1、经过存储引擎批准，通过在 THR_LOCK 描述符中调用 check_status() 函数指针完成的所有读锁 【TL_READ_NO_INSERT除外】
+ * 允许一个 TL_WRITE_CONCURRENT_INSERT 锁
+ * 2、TL_WRITE_ALLOW_WRITE 允许读取所有的读锁和写锁 【TL_WRITE_ONLY】
+ * 3、TL_WRITE_DELAYED 允许所有的读锁 TL_READ_NO_INSERT
+ * 4、TL_WRITE_CONCURRENT_INSERT 允许所有读锁 【TL_READ_NO_INSERT】
+ * 冲突写锁属于发出请求的线程
+ *
+ * 写锁请求：
+ *  当请求一个写锁时，
+ *  1、表锁管理器首先检查当前写锁队列中是否已经有写锁
+ *  2、如果没有任何写锁，在检查啊暂停写锁队列
+ *  3、如果暂停写锁队列非空，则将请求放入到写锁队列，线程本身暂停，等待锁
+ *  4、如果暂停写锁队列为空，则检查当前读锁队列；
+ *  当前读锁的存在会导致写锁请求等待，下列情况除外：
+ *  1、所请求的锁为 TL_WRITE_DELAYED
+ *  2、所请求的锁为 TL_WRITE_CONCURRENT_INSERT 或者 TL_WRITE_ALLOW_WRITE，且当前读锁队列中没有 TL_READ_NO_INSERT
+ *  
+ * */
 static enum enum_thr_lock_result
 wait_for_lock(struct st_lock_list *wait, THR_LOCK_DATA *data,
               my_bool in_wait_list)
