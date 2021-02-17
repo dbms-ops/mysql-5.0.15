@@ -72,6 +72,10 @@ TODO:
        
 */
 
+/*
+ * 由一个称为 gen_lex_hash.cc 的特殊使用程序生成了一个非常有效的关键字查询散列，然后使用其余代码进行汇编
+ * */
+
 #define NO_YACC_SYMBOLS
 #include "my_global.h"
 #include "my_sys.h"

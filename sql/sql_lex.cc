@@ -16,7 +16,9 @@
 
 
 /* A lexical scanner on a temporary buffer with a yacc interface */
-
+/*
+ *
+ * */
 #include "mysql_priv.h"
 #include "item_create.h"
 #include <m_ctype.h>
@@ -508,6 +510,9 @@ static inline uint int_token(const char *str,uint length)
 				(which can't be followed by a signed number)
 */
 
+/*
+ *
+ * */
 int yylex(void *arg, void *yythd)
 {
   reg1	uchar c;

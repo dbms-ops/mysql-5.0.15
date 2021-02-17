@@ -45,6 +45,7 @@ SYM_GROUP sym_group_rtree= {"RTree keys", "HAVE_RTREE_KEYS"};
   Symbols are broken into separated arrays to allow field names with
   same name as functions.
   These are kept sorted for human lookup (the symbols are hashed).
+  MySQL 的关键字列表
 */
 
 static SYMBOL symbols[] = {
@@ -547,7 +548,9 @@ static SYMBOL symbols[] = {
   { "||",		SYM(OR_OR_SYM)}
 };
 
-
+/*
+ * MySQL 函数关键字，
+ * */
 static SYMBOL sql_functions[] = {
   { "ABS",		F_SYM(FUNC_ARG1),0,CREATE_FUNC(create_func_abs)},
   { "ACOS",		F_SYM(FUNC_ARG1),0,CREATE_FUNC(create_func_acos)},

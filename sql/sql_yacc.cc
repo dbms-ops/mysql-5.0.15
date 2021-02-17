@@ -45,7 +45,9 @@
 /* Using locations.  */
 #define YYLSP_NEEDED 0
 
-
+/*
+ * SQL 语法解析器
+ * */
 
 /* Tokens.  */
 #ifndef YYTOKENTYPE

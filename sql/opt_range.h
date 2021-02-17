@@ -99,151 +99,157 @@ class QUICK_RANGE :public Sql_alloc {
   
 */
 
-class QUICK_SELECT_I
-{
+class QUICK_SELECT_I {
 public:
-  bool sorted;
-  ha_rows records;  /* estimate of # of records to be retrieved */
-  double  read_time; /* time to perform this retrieval          */
-  TABLE   *head;
-  /*
-    Index this quick select uses, or MAX_KEY for quick selects
-    that use several indexes
-  */
-  uint index;
+    bool sorted;
+    ha_rows records;  /* estimate of # of records to be retrieved */
+    double read_time; /* time to perform this retrieval          */
+    TABLE *head;
+    /*
+      Index this quick select uses, or MAX_KEY for quick selects
+      that use several indexes
+    */
+    uint index;
 
-  /*
-    Total length of first used_key_parts parts of the key.
-    Applicable if index!= MAX_KEY.
-  */
-  uint max_used_key_length;
+    /*
+      Total length of first used_key_parts parts of the key.
+      Applicable if index!= MAX_KEY.
+    */
+    uint max_used_key_length;
 
-  /*
-    Max. number of (first) key parts this quick select uses for retrieval.
-    eg. for "(key1p1=c1 AND key1p2=c2) OR key1p1=c2" used_key_parts == 2.
-    Applicable if index!= MAX_KEY.
-  */
-  uint used_key_parts;
+    /*
+      Max. number of (first) key parts this quick select uses for retrieval.
+      eg. for "(key1p1=c1 AND key1p2=c2) OR key1p1=c2" used_key_parts == 2.
+      Applicable if index!= MAX_KEY.
+    */
+    uint used_key_parts;
 
-  QUICK_SELECT_I();
-  virtual ~QUICK_SELECT_I(){};
+    QUICK_SELECT_I();
 
-  /*
-    Do post-constructor initialization.
-    SYNOPSIS
-      init()
+    virtual ~QUICK_SELECT_I() {};
 
-    init() performs initializations that should have been in constructor if
-    it was possible to return errors from constructors. The join optimizer may
-    create and then delete quick selects without retrieving any rows so init()
-    must not contain any IO or CPU intensive code.
+    /*
+      Do post-constructor initialization.
+      SYNOPSIS
+        init()
 
-    If init() call fails the only valid action is to delete this quick select,
-    reset() and get_next() must not be called.
+      init() performs initializations that should have been in constructor if
+      it was possible to return errors from constructors. The join optimizer may
+      create and then delete quick selects without retrieving any rows so init()
+      must not contain any IO or CPU intensive code.
 
-    RETURN
-      0      OK
-      other  Error code
-  */
-  virtual int  init() = 0;
+      If init() call fails the only valid action is to delete this quick select,
+      reset() and get_next() must not be called.
 
-  /*
-    Initialize quick select for row retrieval.
-    SYNOPSIS
-      reset()
+      RETURN
+        0      OK
+        other  Error code
+    */
+    virtual int init() = 0;
 
-    reset() should be called when it is certain that row retrieval will be
-    necessary. This call may do heavyweight initialization like buffering first
-    N records etc. If reset() call fails get_next() must not be called.
-    Note that reset() may be called several times if 
-     * the quick select is executed in a subselect
-     * a JOIN buffer is used
-    
-    RETURN
-      0      OK
-      other  Error code
-  */
-  virtual int  reset(void) = 0;
+    /*
+      Initialize quick select for row retrieval.
+      SYNOPSIS
+        reset()
 
-  virtual int  get_next() = 0;   /* get next record to retrieve */
+      reset() should be called when it is certain that row retrieval will be
+      necessary. This call may do heavyweight initialization like buffering first
+      N records etc. If reset() call fails get_next() must not be called.
+      Note that reset() may be called several times if
+       * the quick select is executed in a subselect
+       * a JOIN buffer is used
 
-  /* Range end should be called when we have looped over the whole index */
-  virtual void range_end() {}
+      RETURN
+        0      OK
+        other  Error code
+    */
+    virtual int reset(void) = 0;
 
-  virtual bool reverse_sorted() = 0;
-  virtual bool unique_key_range() { return false; }
+    virtual int get_next() = 0;   /* get next record to retrieve */
 
-  enum {
-    QS_TYPE_RANGE = 0,
-    QS_TYPE_INDEX_MERGE = 1,
-    QS_TYPE_RANGE_DESC = 2,
-    QS_TYPE_FULLTEXT   = 3,
-    QS_TYPE_ROR_INTERSECT = 4,
-    QS_TYPE_ROR_UNION = 5,
-    QS_TYPE_GROUP_MIN_MAX = 6
-  };
+    /* Range end should be called when we have looped over the whole index */
+    virtual void range_end() {}
 
-  /* Get type of this quick select - one of the QS_TYPE_* values */
-  virtual int get_type() = 0;
+    virtual bool reverse_sorted() = 0;
 
-  /*
-    Initialize this quick select as a merged scan inside a ROR-union or a ROR-
-    intersection scan. The caller must not additionally call init() if this
-    function is called.
-    SYNOPSIS
-      init_ror_merged_scan()
-        reuse_handler If true, the quick select may use table->handler, otherwise
-                      it must create and use a separate handler object.
-    RETURN
-      0     Ok
-      other Error
-  */
-  virtual int init_ror_merged_scan(bool reuse_handler)
-  { DBUG_ASSERT(0); return 1; }
+    virtual bool unique_key_range() { return false; }
 
-  /*
-    Save ROWID of last retrieved row in file->ref. This used in ROR-merging.
-  */
-  virtual void save_last_pos(){};
+    enum {
+        QS_TYPE_RANGE = 0,
+        QS_TYPE_INDEX_MERGE = 1,
+        QS_TYPE_RANGE_DESC = 2,
+        QS_TYPE_FULLTEXT = 3,
+        QS_TYPE_ROR_INTERSECT = 4,
+        QS_TYPE_ROR_UNION = 5,
+        QS_TYPE_GROUP_MIN_MAX = 6
+    };
 
-  /*
-    Append comma-separated list of keys this quick select uses to key_names;
-    append comma-separated list of corresponding used lengths to used_lengths.
-    This is used by select_describe.
-  */
-  virtual void add_keys_and_lengths(String *key_names,
-                                    String *used_lengths)=0;
+    /* Get type of this quick select - one of the QS_TYPE_* values */
+    virtual int get_type() = 0;
 
-  /*
-    Append text representation of quick select structure (what and how is
-    merged) to str. The result is added to "Extra" field in EXPLAIN output.
-    This function is implemented only by quick selects that merge other quick
-    selects output and/or can produce output suitable for merging.
-  */
-  virtual void add_info_string(String *str) {};
-  /*
-    Return 1 if any index used by this quick select
-     a) uses field that is listed in passed field list or
-     b) is automatically updated (like a timestamp)
-  */
-  virtual bool check_if_keys_used(List<Item> *fields);
+    /*
+      Initialize this quick select as a merged scan inside a ROR-union or a ROR-
+      intersection scan. The caller must not additionally call init() if this
+      function is called.
+      SYNOPSIS
+        init_ror_merged_scan()
+          reuse_handler If true, the quick select may use table->handler, otherwise
+                        it must create and use a separate handler object.
+      RETURN
+        0     Ok
+        other Error
+    */
+    virtual int init_ror_merged_scan(bool reuse_handler) {
+        DBUG_ASSERT(0);
+        return 1;
+    }
 
-  /*
-    rowid of last row retrieved by this quick select. This is used only when
-    doing ROR-index_merge selects
-  */
-  byte    *last_rowid;
+    /*
+      Save ROWID of last retrieved row in file->ref. This used in ROR-merging.
+    */
+    virtual void save_last_pos() {};
 
-  /*
-    Table record buffer used by this quick select.
-  */
-  byte    *record;
+    /*
+      Append comma-separated list of keys this quick select uses to key_names;
+      append comma-separated list of corresponding used lengths to used_lengths.
+      This is used by select_describe.
+    */
+    virtual void add_keys_and_lengths(String *key_names,
+                                      String *used_lengths) = 0;
+
+    /*
+      Append text representation of quick select structure (what and how is
+      merged) to str. The result is added to "Extra" field in EXPLAIN output.
+      This function is implemented only by quick selects that merge other quick
+      selects output and/or can produce output suitable for merging.
+    */
+    virtual void add_info_string(String *str) {};
+
+    /*
+      Return 1 if any index used by this quick select
+       a) uses field that is listed in passed field list or
+       b) is automatically updated (like a timestamp)
+    */
+    virtual bool check_if_keys_used(List<Item> *fields);
+
+    /*
+      rowid of last row retrieved by this quick select. This is used only when
+      doing ROR-index_merge selects
+    */
+    byte *last_rowid;
+
+    /*
+      Table record buffer used by this quick select.
+    */
+    byte *record;
 #ifndef DBUG_OFF
-  /*
-    Print quick select information to DBUG_FILE. Caller is responsible
-    for locking DBUG_FILE before this call and unlocking it afterwards.
-  */
-  virtual void dbug_dump(int indent, bool verbose)= 0;
+
+    /*
+      Print quick select information to DBUG_FILE. Caller is responsible
+      for locking DBUG_FILE before this call and unlocking it afterwards.
+    */
+    virtual void dbug_dump(int indent, bool verbose) = 0;
+
 #endif
 };
 

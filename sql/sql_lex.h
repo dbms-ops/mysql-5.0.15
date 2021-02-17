@@ -17,6 +17,9 @@
 
 /* YACC and LEX Definitions */
 
+/*
+ * 解析树
+ * */
 /* These may not be declared yet */
 class Table_ident;
 class sql_exchange;
@@ -45,6 +48,10 @@ class sp_pcontext;
   When a command is added here, be sure it's also added in mysqld.cc
   in "struct show_var_st status_vars[]= {" ...
 */
+
+/*
+ * enum_sql_command：显示正在执行的SQL查询类型，例如选择、更新、插入、删除
+ * */
 
 enum enum_sql_command {
   SQLCOM_SELECT, SQLCOM_CREATE_TABLE, SQLCOM_CREATE_INDEX, SQLCOM_ALTER_TABLE,
@@ -645,6 +652,10 @@ public:
   */
   void cleanup_all_joins(bool full);
 };
+
+/*
+ * select members。该类包含众多的成员，这些成员包含有关各种查询特点的信息，如 WHERE 从句，表列表，域列表，优化器提示的信息
+ * */
 typedef class st_select_lex SELECT_LEX;
 
 #define ALTER_ADD_COLUMN	1
