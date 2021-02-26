@@ -25,7 +25,7 @@ typedef enum {RPL_AUTH_MASTER=0,RPL_ACTIVE_SLAVE,RPL_IDLE_SLAVE,
 	      RPL_RECOVERY_CAPTAIN,RPL_NULL /* inactive */,
 	      RPL_ANY /* wild card used by change_rpl_status */ } RPL_STATUS;
 extern RPL_STATUS rpl_status;
-
+/* 保护 SHOW STATUS输出结果中显示的变量 */
 extern pthread_mutex_t LOCK_rpl_status;
 extern pthread_cond_t COND_rpl_status;
 extern TYPELIB rpl_role_typelib, rpl_status_typelib;

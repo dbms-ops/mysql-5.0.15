@@ -488,7 +488,9 @@ class select_result;
 #define THD_SENTRY_GONE  0xdeadbeef
 
 #define THD_CHECK_SENTRY(thd) DBUG_ASSERT(thd->dbug_sentry == THD_SENTRY_MAGIC)
-
+/*
+ * 系统环境变量
+ * */
 struct system_variables
 {
   ulonglong myisam_max_extra_sort_file_size;
